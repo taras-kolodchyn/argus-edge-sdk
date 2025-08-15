@@ -1,0 +1,24 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build mock-auth
+        working-directory: dev/mock-auth
+        run: cargo build --locked --release
+
+      - name: Build mock-sink
+        working-directory: dev/mock-sink
+        run: cargo build --locked --release
