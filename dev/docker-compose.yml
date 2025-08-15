@@ -1,0 +1,44 @@
+version: "3.9"
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "8883:8883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto:/mosquitto
+      - ../tools/certs:/certs:ro
+
+  mock-auth:
+    build:
+      context: ./mock-auth
+    container_name: mock-auth
+    restart: unless-stopped
+    environment:
+      - RUST_LOG=info
+      - MOCK_AUTH_ACCEPT_ANY_SECRET=true
+      - MQTT_USERNAME=${MQTT_USERNAME:-devuser}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-devpass}
+    ports:
+      - "8080:8080"
+
+  mock-sink:
+    build:
+      context: ./mock-sink
+    container_name: mock-sink
+    restart: unless-stopped
+    environment:
+      - RUST_LOG=info
+      - MQTT_URL=mqtt://mqtt:1883
+      - MQTT_USERNAME=${MQTT_USERNAME:-devuser}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-devpass}
+      - MQTT_TOPICS=gaia/devices/+/telemetry
+    volumes:
+      - ./data:/data
+
+networks:
+  default:
+    name: edge-sdk-net
