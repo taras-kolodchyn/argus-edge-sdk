@@ -10,7 +10,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Rust
-      uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: clippy,rustfmt
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -22,3 +25,102 @@ jobs:
       - name: Build mock-sink
         working-directory: dev/mock-sink
         run: cargo build --locked --release
+
+  compose-smoke:
+    name: Docker Compose smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Show Docker versions
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Install tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+
+      - name: Build images with Compose
+        working-directory: dev
+        run: |
+          set -euxo pipefail
+          retry() { n=0; until "$@"; do n=$((n+1)); if [ $n -ge 5 ]; then echo "Command failed after $n attempts: $*" >&2; exit 1; fi; sleep $((2**n)); done; }
+          # Ensure fresh build and be resilient to transient registry 5xx
+          retry docker compose build --pull --no-cache mock-auth mock-sink
+
+      - name: Start stack
+        working-directory: dev
+        run: |
+          set -euxo pipefail
+          docker compose up -d mqtt mock-auth mock-sink mqtt-client
+
+      - name: Wait for services to be healthy
+        working-directory: dev
+        run: |
+          set -euxo pipefail
+          # Resolve container IDs for services once
+          for svc in mqtt mock-auth; do
+            echo "Waiting for $svc to be healthy..."
+            cid=$(docker compose ps -q "$svc")
+            if [ -z "$cid" ]; then
+              echo "Failed to get container id for $svc" >&2
+              docker compose ps
+              exit 1
+            fi
+            # Poll health status up to ~120s
+            for i in $(seq 1 60); do
+              status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid" 2>/dev/null || echo "unknown")
+              if [ "$status" = "healthy" ]; then
+                echo "$svc is healthy"
+                break
+              fi
+              if [ "$status" = "unhealthy" ]; then
+                echo "$svc reported UNHEALTHY; showing logs" >&2
+                docker compose logs "$svc" || true
+                exit 1
+              fi
+              sleep 2
+            done
+          done
+
+      - name: Publish telemetry via mqtt-client
+        working-directory: dev
+        run: |
+          set -euxo pipefail
+          # Load .env into the shell for this step
+          set -a
+          . ./.env
+          set +a
+          # Derive a concrete publish topic from subscription pattern, e.g. argus/devices/+/telemetry -> argus/devices/test/telemetry
+          PUB_TOPIC="${PUBLISH_TOPIC:-${MQTT_TOPICS//+/test}}"
+          PUB_TOPIC="${PUB_TOPIC:-argus/devices/test/telemetry}"
+          # Publish a test message using env-driven broker settings
+          docker compose exec -T mqtt-client sh -lc \
+            "mosquitto_pub -h \"${MQTT_HOST}\" -p \"${MQTT_PORT}\" -u \"${MQTT_USERNAME}\" -P \"${MQTT_PASSWORD}\" -t \"${PUB_TOPIC}\" -m '{\"temp\":25,\"pm25\":10,\"noise\":42,\"ts\":123456789}'"
+          # Give mock-sink a moment to consume and log
+          sleep 2
+
+      - name: Assert mock-sink consumed message
+        working-directory: dev
+        run: |
+          set -euxo pipefail
+          set -a
+          . ./.env
+          set +a
+          PUB_TOPIC="${PUBLISH_TOPIC:-${MQTT_TOPICS//+/test}}"
+          PUB_TOPIC="${PUB_TOPIC:-argus/devices/test/telemetry}"
+          docker compose logs mock-sink | tee /tmp/mock-sink.log
+          grep -E "${PUB_TOPIC}|parsed telemetry" /tmp/mock-sink.log
+
+      - name: Tear down
+        if: always()
+        working-directory: dev
+        run: |
+          docker compose down -v
