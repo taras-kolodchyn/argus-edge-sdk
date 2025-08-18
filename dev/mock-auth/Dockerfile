@@ -37,11 +37,14 @@ USER app
 ENV RUST_LOG=info \
     RUST_BACKTRACE=1
 
+ARG MOCK_AUTH_PORT=8080
+ENV MOCK_AUTH_PORT=${MOCK_AUTH_PORT}
+
 # liveness/health check over HTTP
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=5 \
-  CMD curl -fsS http://127.0.0.1:8080/healthz >/dev/null || exit 1
+  CMD curl -fsS http://127.0.0.1:${MOCK_AUTH_PORT}/healthz >/dev/null || exit 1
 
-EXPOSE 8080
+EXPOSE ${MOCK_AUTH_PORT}
 
 # run the server
 ENTRYPOINT ["/usr/local/bin/mock-auth"]

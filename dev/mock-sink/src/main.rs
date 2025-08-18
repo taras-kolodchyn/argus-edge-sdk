@@ -32,7 +32,11 @@ async fn main() {
     };
     let username = read_env("MQTT_USERNAME", "devuser");
     let password = read_env("MQTT_PASSWORD", "devpass");
-    let topics_csv = read_env("MQTT_TOPICS", "argus/devices/+/telemetry");
+    // Prefer MQTT_TELEMETRY_TOPIC; fall back to legacy MQTT_TOPICS; final default for dev
+    let topics_csv = match std::env::var("MQTT_TELEMETRY_TOPIC") {
+        Ok(v) if !v.trim().is_empty() => v.trim().to_string(),
+        _ => read_env("MQTT_TOPICS", "argus/devices/+/telemetry"),
+    };
 
     // Extra fallbacks for host/port in case URL parsing fails
     let host_fallback = read_env("MQTT_HOST", "localhost");

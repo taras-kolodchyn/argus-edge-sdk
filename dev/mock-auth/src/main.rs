@@ -20,7 +20,15 @@ async fn main() {
         .route("/auth/device/register", post(handlers::register))
         .route("/healthz", get(|| async { "ok" }));
 
-    let addr: SocketAddr = ([0, 0, 0, 0], 8080).into();
+    // Bind host/port from env with sensible defaults. Prefer service-specific vars.
+    let host = std::env::var("MOCK_AUTH_HOST").unwrap_or_else(|_| "0.0.0.0".into());
+    let port: u16 = std::env::var("MOCK_AUTH_PORT")
+        .or_else(|_| std::env::var("PORT")) // fallback for platforms that provide PORT
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8080);
+
+    let addr: SocketAddr = format!("{}:{}", host, port).parse().expect("parse bind addr");
     tracing::info!("mock-auth listening on http://{addr}");
 
     let listener = TcpListener::bind(addr).await.expect("bind listener");
