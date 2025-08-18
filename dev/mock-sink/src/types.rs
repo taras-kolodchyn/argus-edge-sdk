@@ -1,5 +1,5 @@
 use serde::Deserialize;
-
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct Telemetry {
     pub temp: Option<f32>,
