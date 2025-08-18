@@ -67,6 +67,12 @@ services:
       mock-auth:
         condition: service_healthy
     env_file: .env
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep mock-sink || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     volumes:
       - ./data:/data
       - certs:/certs:ro
