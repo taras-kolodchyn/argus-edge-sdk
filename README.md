@@ -1,8 +1,18 @@
 # argus-edge-sdk
 Open-source Edge SDK, firmware, and development kit for building, testing, and integrating IoT and sensor devices with the Gaia Project’s Argus service. Includes example firmware for Arduino/ESP32, a local MQTT/TLS development environment, OTA update examples, and backend mock services to enable community contributions and custom integrations.
 
-[![CI](https://github.com/taras-kolodchyn/argus-edge-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/taras-kolodchyn/argus-edge-sdk/actions/workflows/ci.yml)
-![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+[![CI][ci-badge]][ci-url]
+[![Release][rel-badge]][rel-url]
+[![Last commit][lc-badge]][lc-url]
+[![Issues][issues-badge]][issues-url]
+[![PRs][prs-badge]][prs-url]
+[![Rust][rust-badge]][rust-url]
+[![C++][cpp-badge]][cpp-url]
+[![Arduino][arduino-badge]][arduino-url]
+[![License][lic-badge]][lic-url]
+[![Conventional Commits][cc-badge]][cc-url]
+[![pre-commit][pc-badge]][pc-url]
+
 
 ## What's inside
 
@@ -163,5 +173,32 @@ act -j compose-smoke \
   --bind \
   --container-options '--privileged --user root'
 ```
+This variant ensures compatibility when jobs need privileged mode, root user, or volume binds.
 
-This variant ensures compatibility when jobs need privileged mode, root user, or volume binds.  
+
+
+
+
+
+[ci-badge]: https://github.com/taras-kolodchyn/argus-edge-sdk/actions/workflows/ci.yml/badge.svg?branch=main
+[ci-url]: https://github.com/taras-kolodchyn/argus-edge-sdk/actions/workflows/ci.yml
+[rel-badge]: https://img.shields.io/github/v/release/taras-kolodchyn/argus-edge-sdk?display_name=tag&sort=semver
+[rel-url]: https://github.com/taras-kolodchyn/argus-edge-sdk/releases
+[lc-badge]: https://img.shields.io/github/last-commit/taras-kolodchyn/argus-edge-sdk/main
+[lc-url]: https://github.com/taras-kolodchyn/argus-edge-sdk/commits/main
+[issues-badge]: https://img.shields.io/github/issues/taras-kolodchyn/argus-edge-sdk
+[issues-url]: https://github.com/taras-kolodchyn/argus-edge-sdk/issues
+[prs-badge]: https://img.shields.io/github/issues-pr/taras-kolodchyn/argus-edge-sdk
+[prs-url]: https://github.com/taras-kolodchyn/argus-edge-sdk/pulls
+[rust-badge]: https://img.shields.io/badge/Rust-1.80%2B-orange?logo=rust&logoColor=white
+[rust-url]: https://www.rust-lang.org/
+[lic-badge]: https://img.shields.io/badge/license-Apache--2.0-blue
+[lic-url]: https://github.com/taras-kolodchyn/argus-edge-sdk/blob/main/LICENSE
+[cc-badge]: https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg
+[cc-url]: https://conventionalcommits.org
+[pc-badge]: https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white
+[pc-url]: https://github.com/pre-commit/pre-commit
+[cpp-badge]: https://img.shields.io/badge/C++-17-blue?logo=c%2B%2B&logoColor=white
+[cpp-url]: https://isocpp.org/
+[arduino-badge]: https://img.shields.io/badge/Arduino-IDE-00979D?logo=arduino&logoColor=white
+[arduino-url]: https://www.arduino.cc/
