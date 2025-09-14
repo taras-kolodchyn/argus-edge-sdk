@@ -87,6 +87,65 @@ docker compose logs -f mock-sink
   - `RUST_LOG`, `RUST_BACKTRACE`
   - `MOCK_AUTH_ACCEPT_ANY_SECRET` (dev convenience)
 
+#### Token flow and curl examples
+
+Endpoints (all under `http://localhost:8080`):
+
+- `POST /auth/device/register`
+  - Request: `{ "device_id": "...", "pre_shared_secret": "..." }`
+  - Response: `{ "device_id": "...", "token": "...", "mqtt_username": "...", "mqtt_password": "...", "expires_at": "RFC3339" }`
+  - Notes: If `MOCK_AUTH_ACCEPT_ANY_SECRET=true` (default), any secret is accepted. If set to `false`, secrets shorter than 6 characters return `401`.
+
+- `POST /auth/device/login`
+  - Request: `{ "device_id": "...", "token": "..." }`
+  - Response: `{ "access_token": "...", "expires_at": "RFC3339" }`
+  - Notes: In the mock, any token with length >= 10 is accepted.
+
+- `POST /auth/token/validate`
+  - Request: `{ "access_token": "..." }`
+  - Response: `{ "valid": true|false }`
+
+- `GET /healthz` → `{ "status": "ok" }`
+
+Request tracing:
+- Every response includes header `X-Request-Id` (auto-generated UUID if absent on request).
+- You can provide your own `X-Request-Id`; it will be propagated to response and appear in service logs to correlate requests.
+
+Quick test with curl and jq:
+
+```bash
+# Health
+curl -i http://localhost:8080/healthz
+
+# 1) Register a device and capture token
+DEVICE_ID=device-123
+TOKEN=$(curl -s -X POST http://localhost:8080/auth/device/register \
+  -H 'Content-Type: application/json' \
+  -d "{\"device_id\":\"$DEVICE_ID\",\"pre_shared_secret\":\"testsecret\"}" | jq -r '.token')
+echo "token=$TOKEN"
+
+# 2) Login using the token from registration and capture access_token
+ACCESS_TOKEN=$(curl -s -X POST http://localhost:8080/auth/device/login \
+  -H 'Content-Type: application/json' \
+  -d "{\"device_id\":\"$DEVICE_ID\",\"token\":\"$TOKEN\"}" | jq -r '.access_token')
+echo "access_token=$ACCESS_TOKEN"
+
+# 3) Validate the access token
+curl -s -X POST http://localhost:8080/auth/token/validate \
+  -H 'Content-Type: application/json' \
+  -d "{\"access_token\":\"$ACCESS_TOKEN\"}" | jq
+
+# Optional: Provide a custom request id and inspect it in response headers
+curl -i -H 'X-Request-Id: demo-123' http://localhost:8080/healthz | sed -n '1,10p'
+```
+
+To tail logs and see request_id correlation:
+
+```bash
+docker compose logs -f mock-auth
+# Example log lines include: request_id=... "device register request", "device login success", "token validate"
+```
+
 ### mock-sink
 - MQTT subscriber used for local testing.
 - Subscribes to `MQTT_TOPICS` (default: `argus/devices/+/telemetry`).

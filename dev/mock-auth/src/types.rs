@@ -14,3 +14,20 @@ pub struct DeviceRegisterResp {
     pub mqtt_password: String,
     pub expires_at: String,
 }
+
+#[derive(Deserialize)]
+pub struct DeviceLoginReq {
+    pub device_id: String,
+    pub token: String,
+}
+
+#[derive(Deserialize)]
+pub struct TokenValidateReq {
+    pub access_token: String,
+}
+
+#[derive(Serialize)]
+pub struct DeviceLoginResp {
+    pub access_token: String,
+    pub expires_at: String,
+}

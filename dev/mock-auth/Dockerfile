@@ -21,7 +21,7 @@ FROM debian:bookworm-slim
 
 RUN useradd -m app \
     && apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl procps \
+    && apt-get install -y --no-install-recommends ca-certificates curl procps libssl3 pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /home/app
@@ -29,6 +29,7 @@ WORKDIR /home/app
 # install the compiled binary from the builder stage
 COPY --from=builder /app/target/release/mock-auth /usr/local/bin/mock-auth
 RUN chmod 0755 /usr/local/bin/mock-auth
+
 
 # drop privileges
 USER app
