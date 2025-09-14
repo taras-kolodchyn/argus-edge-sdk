@@ -1,14 +1,9 @@
 use anyhow::Result;
-use serde_json::json;
-mod types;
-mod handlers;
-
-use axum::{routing::{get, post}, Router};
-use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
-use tower_http::trace::TraceLayer;
+use axum::Router;
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use std::net::SocketAddr;
+use mock_auth::build_router;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -21,32 +16,7 @@ async fn main() -> Result<()> {
         .with(tracing_subscriber::EnvFilter::new(filter))
         .with(tracing_subscriber::fmt::layer())
         .init();
-    
-    let app = Router::new()
-    .route("/auth/device/register", post(handlers::register))
-    .route("/auth/device/login", post(handlers::login))
-    .route("/auth/token/validate", post(handlers::validate))
-    .route("/healthz", get(|| async { axum::Json(json!({"status": "ok"})) }))
-    // tracing with per-request span containing request_id/method/uri
-    .layer(
-        TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {
-            let request_id = req
-                .headers()
-                .get("x-request-id")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("-");
-            tracing::info_span!(
-                "http",
-                %request_id,
-                method = %req.method(),
-                uri = %req.uri(),
-            )
-        }),
-    )
-    // propagate incoming request id if present
-    .layer(PropagateRequestIdLayer::x_request_id())
-    // set request id if missing
-    .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid));
+    let app: Router = build_router();
 
     // Bind host/port from env with sensible defaults. Prefer service-specific vars.
     let host = std::env::var("MOCK_AUTH_HOST").unwrap_or_else(|_| "0.0.0.0".into());

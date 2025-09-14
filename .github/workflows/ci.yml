@@ -22,6 +22,10 @@ jobs:
         working-directory: dev/mock-auth
         run: cargo build --locked --release
 
+      - name: Test mock-auth
+        working-directory: dev/mock-auth
+        run: cargo test --locked --all-features -- --nocapture
+
       - name: Build mock-sink
         working-directory: dev/mock-sink
         run: cargo build --locked --release

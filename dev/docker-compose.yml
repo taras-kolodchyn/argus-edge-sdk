@@ -73,6 +73,8 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+    ports:
+      - "8081:8081"
     volumes:
       - ./data:/data
       - certs:/certs:ro
@@ -85,7 +87,7 @@ services:
     depends_on:
       mqtt:
         condition: service_healthy
-    command: ["sh", "-lc", "i=0; while true; do i=$$((i+1)); mosquitto_pub -h ${MQTT_HOST?missing} -p ${MQTT_PORT?missing} -u ${MQTT_USERNAME?missing} -P ${MQTT_PASSWORD?missing} -t ${MQTT_TELEMETRY_TOPIC?missing} -m \"{\\\"temp\\\":25,\\\"pm25\\\":10,\\\"noise\\\":42,\\\"ts\\\":$$i}\" && echo sent; sleep 5; done"]
+    command: ["sh", "-lc", "i=0; while true; do i=$$((i+1)); mosquitto_pub -h ${MQTT_HOST?missing} -p ${MQTT_PORT?missing} -u ${MQTT_USERNAME?missing} -P ${MQTT_PASSWORD?missing} -t ${MQTT_TELEMETRY_TOPIC?missing} -m \"{\\\"temp\\\":25,\\\"pm25\\\":10,\\\"noise\\\":42,\\\"ts\\\":$$i}\" && echo sent; sleep 120; done"]
 
   mqtt-test:
     image: eclipse-mosquitto:2
