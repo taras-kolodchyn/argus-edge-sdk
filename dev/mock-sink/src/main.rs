@@ -1,11 +1,16 @@
-mod types;
 mod handlers;
+mod types;
 
-use anyhow::Result;
-use axum::{routing::{get, post}, Router};
-use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, Outgoing, QoS};
+use anyhow::{Context, Result};
+use axum::{
+    Router,
+    routing::{get, post},
+};
+use rumqttc::{
+    AsyncClient, Event, Incoming, MqttOptions, Outgoing, QoS, TlsConfiguration, Transport,
+};
 use std::{net::SocketAddr, sync::Arc};
-use tokio::net::TcpListener;
+use tokio::{fs, net::TcpListener};
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -20,6 +25,20 @@ fn read_env(key: &str, default: &str) -> String {
     }
 }
 
+fn read_env_optional(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+fn ensure_trailing_slash(mut value: String) -> String {
+    if !value.ends_with('/') {
+        value.push('/');
+    }
+    value
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
@@ -32,38 +51,70 @@ async fn main() -> Result<()> {
         .init();
 
     // MQTT config
-    let mqtt_url_raw = std::env::var("MQTT_URL").unwrap_or_default();
-    let mqtt_url = if mqtt_url_raw.trim().is_empty() {
-        "mqtt://mqtt:1883".to_string()
-    } else {
-        mqtt_url_raw.trim().to_string()
-    };
     let username = read_env("MQTT_USERNAME", "devuser");
     let password = read_env("MQTT_PASSWORD", "devpass");
     // Prefer MQTT_TELEMETRY_TOPIC for a concrete publish path in CI; fallback to subscription pattern
     let topics_csv = match std::env::var("MQTT_TELEMETRY_TOPIC") {
         Ok(v) if !v.trim().is_empty() => v.trim().to_string(),
-        _ => read_env("MQTT_TOPICS", "argus/devices/+/telemetry"),
+        _ => read_env("MQTT_TOPICS", "gaia/devices/+"),
     };
-    let host_fallback = read_env("MQTT_HOST", "mqtt");
-    let port_fallback: u16 = read_env("MQTT_PORT", "1883").parse().unwrap_or(1883);
-
-    let (host, port) = match Url::parse(&mqtt_url) {
-        Ok(u) => {
-            let host = u.host_str().unwrap_or(&host_fallback).to_string();
-            let port = u.port().unwrap_or(port_fallback);
-            (host, port)
-        }
-        Err(e) => {
-            tracing::warn!("MQTT_URL parse error: {e}; falling back to {}:{}", host_fallback, port_fallback);
-            (host_fallback, port_fallback)
-        }
+    let default_host = read_env("MQTT_HOST", "mqtt");
+    let default_port: u16 = read_env("MQTT_PORT", "8883").parse().unwrap_or(8883);
+    let (host, port) = match std::env::var("MQTT_URL") {
+        Ok(url) if !url.trim().is_empty() => match Url::parse(url.trim()) {
+            Ok(u) => {
+                let host = u.host_str().unwrap_or(&default_host).to_string();
+                let port = u.port().unwrap_or(default_port);
+                (host, port)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "MQTT_URL parse error: {e}; falling back to {}:{}",
+                    default_host,
+                    default_port
+                );
+                (default_host, default_port)
+            }
+        },
+        _ => (default_host, default_port),
     };
     tracing::info!("mqtt -> {host}:{port} as mock-sink");
 
     let mut opts = MqttOptions::new("mock-sink", host, port);
     opts.set_credentials(username, password);
     opts.set_keep_alive(std::time::Duration::from_secs(30));
+
+    let ca_path = read_env("MQTT_CA_PATH", "/certs/ca.crt");
+    let ca = fs::read(&ca_path)
+        .await
+        .with_context(|| format!("failed to read MQTT_CA_PATH at {ca_path}"))?;
+    let client_auth = match (
+        read_env_optional("MQTT_CERT_PATH"),
+        read_env_optional("MQTT_KEY_PATH"),
+    ) {
+        (Some(cert_path), Some(key_path)) => {
+            let cert = fs::read(&cert_path)
+                .await
+                .with_context(|| format!("failed to read MQTT_CERT_PATH at {cert_path}"))?;
+            let key = fs::read(&key_path)
+                .await
+                .with_context(|| format!("failed to read MQTT_KEY_PATH at {key_path}"))?;
+            Some((cert, key))
+        }
+        (None, None) => None,
+        _ => {
+            tracing::warn!(
+                "MQTT client certificate/key not fully specified; proceeding without client auth"
+            );
+            None
+        }
+    };
+    let transport = Transport::tls_with_config(TlsConfiguration::Simple {
+        ca,
+        alpn: None,
+        client_auth,
+    });
+    opts.set_transport(transport);
     let (client, mut eventloop) = AsyncClient::new(opts, 32);
 
     // Drive MQTT eventloop in background
@@ -94,7 +145,9 @@ async fn main() -> Result<()> {
     // Subscribe to topics so Compose smoke test can assert consumption
     for t in topics_csv.split(',') {
         let t = t.trim();
-        if t.is_empty() { continue; }
+        if t.is_empty() {
+            continue;
+        }
         match client.subscribe(t, QoS::AtLeastOnce).await {
             Ok(_) => tracing::info!("subscribed: {t}"),
             Err(e) => tracing::error!("subscribe error for '{t}': {e}"),
@@ -102,7 +155,12 @@ async fn main() -> Result<()> {
     }
 
     // HTTP server with Axum
-    let state = Arc::new(AppState { mqtt: client });
+    let topic_prefix = ensure_trailing_slash(read_env("MQTT_TOPIC_PREFIX", "gaia/devices/"));
+    tracing::info!("mqtt topic prefix -> {topic_prefix}");
+    let state = Arc::new(AppState {
+        mqtt: client.clone(),
+        topic_prefix,
+    });
     let app = Router::new()
         .route("/health", get(health))
         .route("/telemetry", post(telemetry))

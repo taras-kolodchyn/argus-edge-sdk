@@ -1,3 +1,5 @@
+name: argus-edge-sdk
+
 services:
   init-mqtt:
     image: eclipse-mosquitto:2
@@ -22,7 +24,7 @@ services:
     command: ["mosquitto", "-c", "/mosquitto/config/argus.conf"]
     env_file: .env
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 1883 -u ${MQTT_USERNAME:-devuser} -P ${MQTT_PASSWORD:-devpass} -t hc -m ok || exit 1"]
+      test: ["CMD-SHELL", "mosquitto_pub --cafile /certs/ca.crt -h localhost -p ${MQTT_PORT:-8883} -u ${MQTT_USERNAME:-devuser} -P ${MQTT_PASSWORD:-devpass} -t hc -m ok || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 10
@@ -87,7 +89,9 @@ services:
     depends_on:
       mqtt:
         condition: service_healthy
-    command: ["sh", "-lc", "i=0; while true; do i=$$((i+1)); mosquitto_pub -h ${MQTT_HOST?missing} -p ${MQTT_PORT?missing} -u ${MQTT_USERNAME?missing} -P ${MQTT_PASSWORD?missing} -t ${MQTT_TELEMETRY_TOPIC?missing} -m \"{\\\"temp\\\":25,\\\"pm25\\\":10,\\\"noise\\\":42,\\\"ts\\\":$$i}\" && echo sent; sleep 120; done"]
+    command: ["sh", "-lc", "i=0; while true; do i=$$((i+1)); mosquitto_pub --cafile ${MQTT_CA_PATH:-/certs/ca.crt} -h ${MQTT_HOST?missing} -p ${MQTT_PORT?missing} -u ${MQTT_USERNAME?missing} -P ${MQTT_PASSWORD?missing} -t ${MQTT_TELEMETRY_TOPIC?missing} -m \"{\\\"temp\\\":25,\\\"pm25\\\":10,\\\"noise\\\":42,\\\"ts\\\":$$i}\" && echo sent; sleep 120; done"]
+    volumes:
+      - certs:/certs:ro
 
   mqtt-test:
     image: eclipse-mosquitto:2
@@ -100,6 +104,7 @@ services:
     entrypoint: ["/bin/sh", "/mqtt-test.sh"]
     volumes:
       - ./mqtt-test.sh:/mqtt-test.sh:ro
+      - certs:/certs:ro
 
 networks:
   default:

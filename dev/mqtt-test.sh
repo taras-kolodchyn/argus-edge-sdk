@@ -6,13 +6,23 @@ echo "[mqtt-test] Starting MQTT test..."
 command -v mosquitto_pub
 command -v mosquitto_sub
 
+HOST="${MQTT_HOST:-mqtt}"
+PORT="${MQTT_PORT:-1883}"
+CA_PATH="${MQTT_CA_PATH:-}"
+TLS_ARGS=""
+if [ -n "$CA_PATH" ] && [ -r "$CA_PATH" ]; then
+  TLS_ARGS="--cafile $CA_PATH"
+fi
+
+TOPIC="${MQTT_TELEMETRY_TOPIC:-gaia/devices/selftest}"
+
 echo "[mqtt-test] hostname: $(hostname)"
 echo "[mqtt-test] DNS check..."
-(nslookup mqtt || ping -c1 mqtt || true)
+(nslookup "$HOST" || ping -c1 "$HOST" || true)
 
 echo "[mqtt-test] waiting for broker..."
 for i in $(seq 1 30); do
-  if mosquitto_pub -h mqtt -p 1883 \
+  if mosquitto_pub $TLS_ARGS -h "$HOST" -p "$PORT" \
       -u "${MQTT_USERNAME:-devuser}" -P "${MQTT_PASSWORD:-devpass}" \
       -t hc -m ok >/dev/null 2>&1; then
     echo "[mqtt-test] broker is ready"
@@ -23,13 +33,13 @@ for i in $(seq 1 30); do
 done
 
 echo "[mqtt-test] Subscribing and publishing..."
-( sleep 1; mosquitto_pub -d -h mqtt -p 1883 \
+( sleep 1; mosquitto_pub -d $TLS_ARGS -h "$HOST" -p "$PORT" \
     -u "${MQTT_USERNAME:-devuser}" -P "${MQTT_PASSWORD:-devpass}" \
-    -t 'gaia/devices/selftest' -m 'ok' ) &
+    -t "$TOPIC" -m 'ok' ) &
 
-mosquitto_sub -h mqtt -p 1883 \
+mosquitto_sub $TLS_ARGS -h "$HOST" -p "$PORT" \
   -u "${MQTT_USERNAME:-devuser}" -P "${MQTT_PASSWORD:-devpass}" \
-  -t 'gaia/devices/selftest' -C 1 -W 10 -v \
+  -t "$TOPIC" -C 1 -W 10 -v \
   || { echo '[mqtt-test] FAIL (no message)'; exit 1; }
 
 echo "[mqtt-test] OK"

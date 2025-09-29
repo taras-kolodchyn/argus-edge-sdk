@@ -21,7 +21,7 @@ FROM debian:bookworm-slim
 
 RUN useradd -m app \
     && apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates procps \
+    && apt-get install -y --no-install-recommends ca-certificates openssl procps \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /home/app

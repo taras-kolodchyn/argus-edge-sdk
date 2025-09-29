@@ -1,4 +1,8 @@
-use axum::{Json, extract::State, http::HeaderMap};
+use axum::{
+    Json,
+    extract::State,
+    http::{HeaderMap, StatusCode},
+};
 use rumqttc::{AsyncClient, QoS};
 use serde_json::Value;
 use std::sync::Arc;
@@ -8,6 +12,7 @@ use crate::types::{TelemetryIn, TelemetryResp};
 #[derive(Clone)]
 pub struct AppState {
     pub mqtt: AsyncClient,
+    pub topic_prefix: String,
 }
 
 pub async fn health() -> Json<Value> {
@@ -18,23 +23,40 @@ pub async fn telemetry(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(body): Json<TelemetryIn>,
-) -> Result<Json<TelemetryResp>, (axum::http::StatusCode, String)> {
+) -> Result<Json<TelemetryResp>, (StatusCode, String)> {
     let request_id = headers
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("-");
 
-    let topic = format!("argus/devices/{}/telemetry", body.device_id);
-    let payload = serde_json::to_vec(&body).unwrap_or_default();
+    let device_id = body.device_id.clone();
+    let topic = format!("{}{}", state.topic_prefix, device_id);
+    let payload = serde_json::to_vec(&body).map_err(|e| {
+        tracing::error!(%request_id, error = %e, "serialize telemetry failed");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "serialize telemetry failed".to_string(),
+        )
+    })?;
 
     tracing::info!(%request_id, topic = %topic, device_id = %body.device_id, "telemetry received");
 
-    if let Err(e) = state.mqtt.publish(topic.clone(), QoS::AtLeastOnce, false, payload).await {
-        tracing::error!(%request_id, error = %e, "mqtt publish failed");
-        return Err((axum::http::StatusCode::BAD_GATEWAY, format!("mqtt publish failed: {e}")));
-    }
+    let mqtt = state.mqtt.clone();
+    let publish_topic = topic.clone();
+    let publish_request_id = request_id.to_string();
+    tokio::spawn(async move {
+        if let Err(e) = mqtt
+            .publish(publish_topic.clone(), QoS::AtLeastOnce, false, payload)
+            .await
+        {
+            tracing::error!(%publish_request_id, topic = %publish_topic, error = %e, "mqtt publish failed");
+        } else {
+            tracing::info!(%publish_request_id, forwarded_topic = %publish_topic, "telemetry forwarded to mqtt");
+        }
+    });
 
-    tracing::info!(%request_id, forwarded_topic = %topic, "telemetry forwarded to mqtt");
-    Ok(Json(TelemetryResp { status: "ok", forwarded_topic: topic }))
+    Ok(Json(TelemetryResp {
+        status: "ok",
+        forwarded_topic: topic,
+    }))
 }
-
