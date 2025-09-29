@@ -81,6 +81,28 @@ services:
       - ./data:/data
       - certs:/certs:ro
 
+  mock-ota:
+    build:
+      context: ../..
+      dockerfile: services/mock-ota/Dockerfile
+    container_name: mock-ota
+    restart: unless-stopped
+    depends_on:
+      mqtt:
+        condition: service_healthy
+    env_file: .env
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8090/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    ports:
+      - "8090:8090"
+    volumes:
+      - ../../firmware/artifacts:/artifacts:ro
+      - certs:/certs:ro
+
   mqtt-client:
     image: eclipse-mosquitto:2
     container_name: mqtt-client

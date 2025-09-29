@@ -30,6 +30,10 @@ jobs:
         working-directory: services/mock-sink
         run: cargo build --locked --release
 
+      - name: Build mock-ota
+        working-directory: services/mock-ota
+        run: cargo build --locked --release
+
   compose-smoke:
     name: Docker Compose smoke test
     runs-on: ubuntu-latest
@@ -63,7 +67,7 @@ jobs:
           set -euxo pipefail
           retry() { n=0; until "$@"; do n=$((n+1)); if [ $n -ge 5 ]; then echo "Command failed after $n attempts: $*" >&2; exit 1; fi; sleep $((2**n)); done; }
           # Ensure fresh build and be resilient to transient registry 5xx
-          retry docker compose build --pull --no-cache mock-auth mock-sink
+          retry docker compose build --pull --no-cache mock-auth mock-sink mock-ota
 
       - name: Start stack
         working-directory: deploy/compose
@@ -71,7 +75,7 @@ jobs:
           COMPOSE_FILE: docker-compose.dev.yml
         run: |
           set -euxo pipefail
-          docker compose up -d mqtt mock-auth mock-sink mqtt-client
+          docker compose up -d mqtt mock-auth mock-sink mock-ota mqtt-client
 
       - name: Wait for services to be healthy
         working-directory: deploy/compose
@@ -80,7 +84,7 @@ jobs:
         run: |
           set -euxo pipefail
           # Resolve container IDs for services once
-          for svc in mqtt mock-auth; do
+          for svc in mqtt mock-auth mock-ota; do
             echo "Waiting for $svc to be healthy..."
             cid=$(docker compose ps -q "$svc")
             if [ -z "$cid" ]; then
@@ -114,8 +118,8 @@ jobs:
           set -a
           . ./.env
           set +a
-          # Prefer explicit topic envs; fall back to replacing '+' in the subscription pattern
-          PUB_TOPIC="${PUBLISH_TOPIC:-${MQTT_TELEMETRY_TOPIC:-${MQTT_TOPICS//+/test}}}"
+          # Prefer explicit topic envs; fall back to a known demo topic
+          PUB_TOPIC="${PUBLISH_TOPIC:-${MQTT_TELEMETRY_TOPIC:-gaia/devices/test}}"
           # Publish a test message using env-driven broker settings
           CA_OPT=""
           if [ -n "${MQTT_CA_PATH}" ]; then
@@ -126,6 +130,39 @@ jobs:
           # Give mock-sink a moment to consume and log
           sleep 2
 
+      - name: Create OTA job
+        working-directory: deploy/compose
+        env:
+          COMPOSE_FILE: docker-compose.dev.yml
+        run: |
+          set -euxo pipefail
+          set -a
+          . ./.env
+          set +a
+          JOB_ID=$(curl -s -X POST http://localhost:8090/ota/jobs \
+            -H 'Content-Type: application/json' \
+            -d '{"device_id":"test-device","artifact":"mock-firmware.bin","version":"1.0.1"}' | jq -r '.id')
+          echo "JOB_ID=$JOB_ID" >> $GITHUB_ENV
+          curl -s -X POST http://localhost:8090/ota/jobs/$JOB_ID/dispatch | jq
+          curl -s http://localhost:8090/ota/jobs/$JOB_ID | jq
+
+      - name: Simulate device OTA acknowledgement
+        working-directory: deploy/compose
+        env:
+          COMPOSE_FILE: docker-compose.dev.yml
+        run: |
+          set -euxo pipefail
+          set -a
+          . ./.env
+          set +a
+          [ -n "$JOB_ID" ] || { echo "JOB_ID missing" >&2; exit 1; }
+          docker compose exec -T mqtt-client sh -lc \
+            "mosquitto_pub --cafile ${MQTT_CA_PATH:-/certs/ca.crt} -h ${MQTT_HOST?missing} -p ${MQTT_PORT?missing} \
+              -u ${MQTT_USERNAME?missing} -P ${MQTT_PASSWORD?missing} \
+              -t ${MQTT_TOPIC_PREFIX:-gaia/devices/}test-device/ota/status \
+              -m '{\\\"job_id\\\":\\\"'"$JOB_ID"'\\\",\\\"status\\\":\\\"completed\\\",\\\"message\\\":\\\"ci acknowledgment\\\"}'"
+          curl -s http://localhost:8090/ota/jobs/$JOB_ID | jq
+
       - name: Assert mock-sink consumed message
         working-directory: deploy/compose
         env:
@@ -135,7 +172,7 @@ jobs:
           set -a
           . ./.env
           set +a
-          PUB_TOPIC="${PUBLISH_TOPIC:-${MQTT_TELEMETRY_TOPIC:-${MQTT_TOPICS//+/test}}}"
+          PUB_TOPIC="${PUBLISH_TOPIC:-${MQTT_TELEMETRY_TOPIC:-gaia/devices/test}}"
           docker compose logs mock-sink | tee /tmp/mock-sink.log
           grep -E "${PUB_TOPIC}|parsed telemetry" /tmp/mock-sink.log
 

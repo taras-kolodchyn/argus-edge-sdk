@@ -16,9 +16,9 @@ Open-source Edge SDK, firmware, and development kit for building, testing, and i
 
 ## What's inside
 
-- **services/** – Rust microservices (`mock-auth`, `mock-sink`) managed via a Cargo workspace.
+- **services/** – Rust microservices (`mock-auth`, `mock-sink`, `mock-ota`) managed via a Cargo workspace.
 - **deploy/compose/** – TLS-enabled Docker Compose stack, helper scripts, and environment templates.
-- **firmware/** – example Arduino/ESP32 sketches (stubs/placeholders for now).
+- **firmware/** – example Arduino/ESP32 sketches and OTA `artifacts/` served to devices (stubs/placeholders for now).
 - **docs/** – guides, topics, OTA examples, and architectural references.
 - **Makefile** – common automation (`make dev-up`, `make dev-down`, `make test`, ...).
 
@@ -26,6 +26,7 @@ Open-source Edge SDK, firmware, and development kit for building, testing, and i
 
 - Docker &amp; Docker Compose (v2+)
 - (Optional) Mosquitto clients for quick testing: `mosquitto_pub`, `mosquitto_sub`
+- (Optional) `jq` for parsing JSON responses in CLI examples
 - Copy `deploy/compose/.env.example` to `.env` (or run `make dev-up`).
 
 ## Quick start (local stack)
@@ -68,7 +69,16 @@ make dev-logs
 # or: (cd deploy/compose && docker compose logs -f mock-sink)
 ```
 
-## Services
+6) **(Optional) Trigger a mock OTA rollout**
+```bash
+JOB_ID=$(curl -s -X POST http://localhost:8090/ota/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{\"device_id\":\"device-123\",\"artifact\":\"mock-firmware.bin\",\"version\":\"1.0.1\"}' | jq -r '.id')
+
+curl -s -X POST http://localhost:8090/ota/jobs/$JOB_ID/dispatch | jq
+curl -s http://localhost:8090/ota/jobs/$JOB_ID | jq
+```
+> Follow the OTA flow with `make dev-logs SERVICE=mock-ota` (commands) and `make dev-logs SERVICE=mock-sink` / the device serial monitor for acknowledgements.
 
 ## Architecture
 
@@ -144,9 +154,22 @@ make dev-logs SERVICE=mock-auth
 
 ### mock-sink
 - MQTT subscriber used for local testing.
-- Subscribes to `MQTT_TOPICS` (default: `gaia/devices/+`).
+- Subscribes to `MQTT_TOPICS` (default: `gaia/devices/#`).
 - Connects to broker using TLS (`MQTT_CA_PATH`, optional client certs) and `MQTT_URL`/`MQTT_HOST`/`MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`.
 - Logs parsed telemetry.
+
+### mock-ota
+- OTA control plane for dev. Exposes HTTP API on port **8090** (`/ota/jobs`, `/ota/artifacts`).
+- Publishes commands to `gaia/devices/{device_id}/ota` and listens for acknowledgements on `gaia/devices/{device_id}/ota/status`.
+- Serves files from `firmware/artifacts/` so devices can download mock firmware binaries.
+- Sample flow:
+  ```bash
+  curl -s http://localhost:8090/ota/artifacts | jq
+  JOB_ID=$(curl -s -X POST http://localhost:8090/ota/jobs \
+    -H 'Content-Type: application/json' \
+    -d '{\"device_id\":\"device-123\",\"artifact\":\"mock-firmware.bin\",\"version\":\"1.0.1\"}' | jq -r '.id')
+  curl -s -X POST http://localhost:8090/ota/jobs/$JOB_ID/dispatch | jq
+  ```
 
 ## Common workflows
 
@@ -164,6 +187,7 @@ make dev-up
 **Tail logs**
 ```bash
 make dev-logs
+# e.g. make dev-logs SERVICE=mock-ota
 ```
 
 **Publish/subscribe with Mosquitto clients** (run from within `deploy/compose`)
@@ -179,7 +203,23 @@ docker compose exec mqtt sh -lc \
 docker compose exec mqtt sh -lc \
   'mosquitto_sub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
     -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-    -t "${MQTT_TOPICS:-gaia/devices/+}" -v'
+    -t "${MQTT_TOPICS:-gaia/devices/#}" -v'
+```
+
+**Manage OTA jobs**
+```bash
+curl -s http://localhost:8090/ota/jobs | jq
+JOB_ID=$(curl -s -X POST http://localhost:8090/ota/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{\"device_id\":\"device-123\",\"artifact\":\"mock-firmware.bin\",\"version\":\"1.0.1\"}' | jq -r '.id')
+curl -s -X POST http://localhost:8090/ota/jobs/$JOB_ID/dispatch | jq
+# simulate device ack (optional)
+(cd deploy/compose && docker compose -f docker-compose.dev.yml exec mqtt sh -lc \
+  'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
+    -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
+    -t "${MQTT_TOPIC_PREFIX:-gaia/devices/}device-123/ota/status" \
+    -m "{\\\"job_id\\\":\\\"'$JOB_ID'\\\",\\\"status\\\":\\\"completed\\\",\\\"message\\\":\\\"manual ack\\\"}"')
+curl -s http://localhost:8090/ota/jobs/$JOB_ID | jq
 ```
 
 ## Configuration (env)
@@ -191,8 +231,12 @@ docker compose exec mqtt sh -lc \
 | `MQTT_URL` | Full broker URL. If set, overrides host/port. | `mqtt://mqtt:8883` |
 | `MQTT_TOPIC_PREFIX` | Helpers for composing device topics | `gaia/devices/` |
 | `MQTT_TELEMETRY_TOPIC` | Default publish topic for helper scripts | `gaia/devices/test` |
-| `MQTT_TOPICS` | Topic filter(s) the sink subscribes to | `gaia/devices/+` |
+| `MQTT_TOPICS` | Topic filter(s) the sink subscribes to | `gaia/devices/#` |
 | `MQTT_CA_PATH` | CA certificate path used by mock-sink and scripts | `/certs/ca.crt` |
+| `MOCK_OTA_HOST` | OTA service bind host | `0.0.0.0` |
+| `MOCK_OTA_PORT` | OTA service bind port | `8090` |
+| `MOCK_OTA_PUBLIC_BASE` | Base URL used in OTA commands | `http://mock-ota:8090` |
+| `MOCK_OTA_ARTIFACT_DIR` | Path (inside container) to firmware artifacts | `/artifacts` |
 | `RUST_LOG` | Log level for Rust services | `info` |
 | `RUST_BACKTRACE` | Rust backtraces on panic | `1` |
 
@@ -207,7 +251,9 @@ docker compose exec mqtt sh -lc \
   (cd deploy/compose && docker compose exec mock-sink env | grep -E 'MQTT_|RUST_')
   ```
 - **No messages in sink logs**  
-  Ensure you publish to the topic in `MQTT_TOPICS` and credentials match those in `.env`.
+  Ensure you publish to the topic in `MQTT_TOPICS` and credentials match those in `deploy/compose/.env`.
+- **OTA job stuck in “dispatched”**  
+  Check `make dev-logs SERVICE=mock-ota` (command side) and confirm the device firmware subscribed to `gaia/devices/<device_id>/ota`.
 - **Host vs. container addresses**  
   Inside containers use `mqtt:8883` (TLS). From your host use `127.0.0.1:8883` with `--cafile` pointing to the generated CA cert if you call `mosquitto_pub` directly.
 

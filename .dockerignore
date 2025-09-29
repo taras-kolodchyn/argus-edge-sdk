@@ -1,0 +1,8 @@
+target
+.git
+.gitignore
+*.log
+**/target
+firmware/artifacts
+firmware/.pio
+.deploy

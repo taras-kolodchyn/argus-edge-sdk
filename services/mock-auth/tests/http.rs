@@ -1,6 +1,9 @@
-use axum::{body::{Body, to_bytes}, http::{Request, StatusCode}};
+use axum::{
+    body::{Body, to_bytes},
+    http::{Request, StatusCode},
+};
 use mock_auth::build_router;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tower::util::ServiceExt; // for `oneshot`
 
 #[tokio::test]
@@ -8,7 +11,12 @@ use tower::util::ServiceExt; // for `oneshot`
 async fn healthz_ok() {
     let app = build_router();
     let resp = app
-        .oneshot(Request::builder().uri("/healthz").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/healthz")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -17,7 +25,9 @@ async fn healthz_ok() {
 #[tokio::test]
 #[serial_test::serial]
 async fn register_ok() {
-    unsafe { std::env::set_var("MOCK_AUTH_ACCEPT_ANY_SECRET", "true"); }
+    unsafe {
+        std::env::set_var("MOCK_AUTH_ACCEPT_ANY_SECRET", "true");
+    }
     let app = build_router();
     let body = json!({
         "device_id": "test-device",
@@ -47,7 +57,9 @@ async fn register_ok() {
 #[tokio::test]
 #[serial_test::serial]
 async fn register_rejects_short_secret_when_disabled() {
-    unsafe { std::env::set_var("MOCK_AUTH_ACCEPT_ANY_SECRET", "false"); }
+    unsafe {
+        std::env::set_var("MOCK_AUTH_ACCEPT_ANY_SECRET", "false");
+    }
     let app = build_router();
     let body = json!({
         "device_id": "test-device",
@@ -71,7 +83,9 @@ async fn register_rejects_short_secret_when_disabled() {
 #[tokio::test]
 #[serial_test::serial]
 async fn login_then_validate() {
-    unsafe { std::env::set_var("MOCK_AUTH_ACCEPT_ANY_SECRET", "true"); }
+    unsafe {
+        std::env::set_var("MOCK_AUTH_ACCEPT_ANY_SECRET", "true");
+    }
     let app = build_router();
 
     // register
@@ -93,7 +107,8 @@ async fn login_then_validate() {
         .await
         .unwrap();
     assert_eq!(reg_resp.status(), StatusCode::OK);
-    let reg_json: Value = serde_json::from_slice(&to_bytes(reg_resp.into_body(), 64 * 1024).await.unwrap()).unwrap();
+    let reg_json: Value =
+        serde_json::from_slice(&to_bytes(reg_resp.into_body(), 64 * 1024).await.unwrap()).unwrap();
     let token = reg_json["token"].as_str().unwrap().to_string();
 
     // login
@@ -115,14 +130,17 @@ async fn login_then_validate() {
         .await
         .unwrap();
     assert_eq!(login_resp.status(), StatusCode::OK);
-    let login_json: Value = serde_json::from_slice(&to_bytes(login_resp.into_body(), 64 * 1024).await.unwrap()).unwrap();
+    let login_json: Value =
+        serde_json::from_slice(&to_bytes(login_resp.into_body(), 64 * 1024).await.unwrap())
+            .unwrap();
     let access_token = login_json["access_token"].as_str().unwrap();
     assert!(!access_token.is_empty());
 
     // validate
     let val_body = json!({
         "access_token": access_token,
-    }).to_string();
+    })
+    .to_string();
     let val_resp = app
         .oneshot(
             Request::builder()
@@ -135,6 +153,7 @@ async fn login_then_validate() {
         .await
         .unwrap();
     assert_eq!(val_resp.status(), StatusCode::OK);
-    let val_json: Value = serde_json::from_slice(&to_bytes(val_resp.into_body(), 64 * 1024).await.unwrap()).unwrap();
+    let val_json: Value =
+        serde_json::from_slice(&to_bytes(val_resp.into_body(), 64 * 1024).await.unwrap()).unwrap();
     assert_eq!(val_json["valid"], true);
 }

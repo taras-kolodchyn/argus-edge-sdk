@@ -12,4 +12,5 @@
   - `gaia/devices/{device_id}/commands`
 
 - OTA update:
-  - `gaia/devices/{device_id}/ota`
+  - `gaia/devices/{device_id}/ota` (job command from mock-ota to the device)
+  - `gaia/devices/{device_id}/ota/status` (device -> mock-ota acknowledgement / progress)

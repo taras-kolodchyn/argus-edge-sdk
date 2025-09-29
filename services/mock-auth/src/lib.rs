@@ -1,17 +1,23 @@
-use axum::{routing::{get, post}, Router};
+use axum::{
+    Router,
+    routing::{get, post},
+};
 use serde_json::json;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
 
-pub mod types;
 pub mod handlers;
+pub mod types;
 
 pub fn build_router() -> Router {
     Router::new()
         .route("/auth/device/register", post(handlers::register))
         .route("/auth/device/login", post(handlers::login))
         .route("/auth/token/validate", post(handlers::validate))
-        .route("/healthz", get(|| async { axum::Json(json!({"status": "ok"})) }))
+        .route(
+            "/healthz",
+            get(|| async { axum::Json(json!({"status": "ok"})) }),
+        )
         .layer(
             TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {
                 let request_id = req
@@ -30,4 +36,3 @@ pub fn build_router() -> Router {
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
 }
-

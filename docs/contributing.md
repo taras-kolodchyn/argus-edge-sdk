@@ -2,7 +2,7 @@
 
 Thanks for your interest in **argus-edge-sdk**!  
 The main focus of contributions is developing **firmware for devices** and covering as many sensors as possible.  
-Mock services (`mock-auth`, `mock-sink`, `mosquitto`) exist only for **local testing** of firmware and should not be extended with new features.
+Mock services (`mock-auth`, `mock-sink`, `mock-ota`, Mosquitto) exist only for **local testing** of firmware and should not be extended with production features.
 
 ## Quick Start
 1. **Fork** the repo and create a feature branch:
@@ -19,8 +19,21 @@ Mock services (`mock-auth`, `mock-sink`, `mosquitto`) exist only for **local tes
    (cd deploy/compose && docker compose exec mqtt sh -lc \
      'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
        -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-       -t "${MQTT_TELEMETRY_TOPIC:-gaia/devices/test}" \
-       -m "{\\"temp\\":25,\\"pm25\\":10,\\"noise\\":42,\\"ts\\":123456789}"')
+   -t "${MQTT_TELEMETRY_TOPIC:-gaia/devices/test}" \
+      -m "{\\"temp\\":25,\\"pm25\\":10,\\"noise\\":42,\\"ts\\":123456789}"')
+   ```
+3b. (Optional) Create and dispatch a mock OTA job:
+   ```bash
+   (cd deploy/compose && JOB_ID=$(curl -s -X POST http://localhost:8090/ota/jobs \
+     -H 'Content-Type: application/json' \
+     -d '{"device_id":"device-123","artifact":"mock-firmware.bin","version":"1.0.1"}' | jq -r '.id') && \
+     curl -s -X POST http://localhost:8090/ota/jobs/$JOB_ID/dispatch | jq)
+   # optional: acknowledge via mqtt-client
+   (cd deploy/compose && docker compose -f docker-compose.dev.yml exec mqtt sh -lc \
+     'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
+       -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
+       -t "${MQTT_TOPIC_PREFIX:-gaia/devices/}device-123/ota/status" \
+       -m "{\\"job_id\\":\\"'$JOB_ID'\\",\\"status\\":\\"completed\\",\\"message\\":\\"manual ack\\"}"')
    ```
 4. Run the smoke tests locally with **act** (mirrors CI):
    ```bash
@@ -32,7 +45,7 @@ Mock services (`mock-auth`, `mock-sink`, `mosquitto`) exist only for **local tes
    ```
 
 ## Project layout
-- **/services** – Rust services (`mock-auth`, `mock-sink`)
+- **/services** – Rust services (`mock-auth`, `mock-sink`, `mock-ota`)
 - **/deploy/compose** – Docker Compose stack, env templates, helper scripts
 - **/firmware** – device firmware and examples
   - `arduino/examples/` – minimal sketches (hello world, basic sensor usage)

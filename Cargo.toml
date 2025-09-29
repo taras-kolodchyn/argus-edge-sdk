@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "services/mock-auth",
+    "services/mock-auth", "services/mock-ota",
     "services/mock-sink"
 ]
 resolver = "2"

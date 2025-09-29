@@ -41,6 +41,7 @@ String reg_token;       // token from /auth/device/register
 String mqtt_username;   // from /auth/device/register
 String mqtt_password;   // from /auth/device/register
 String access_token;    // from /auth/device/login
+String device_topic_base;
 
 unsigned long lastPublishMs = 0;
 unsigned long lastLoginMs = 0;
@@ -143,7 +144,14 @@ static bool mqtt_connect() {
   Serial.print("[mqtt] connecting to "); Serial.print(MQTT_HOST); Serial.print(":"); Serial.println(MQTT_PORT);
   // Use device_id as client id
   bool ok = mqtt.connect(device_id.c_str(), mqtt_username.c_str(), mqtt_password.c_str());
-  Serial.println(ok ? "[mqtt] connected" : "[mqtt] connect failed");
+  if (ok) {
+    Serial.println("[mqtt] connected");
+    String otaTopic = device_topic_base + "/ota";
+    mqtt.subscribe(otaTopic.c_str(), 1);
+    Serial.print("[mqtt] subscribed -> "); Serial.println(otaTopic);
+  } else {
+    Serial.println("[mqtt] connect failed");
+  }
   return ok;
 }
 
@@ -156,9 +164,55 @@ static void mqtt_publish_telemetry() {
   String out;
   serializeJson(payload, out);
 
-  String topic = String("gaia/devices/") + device_id;
+  mqtt.publish(device_topic_base.c_str(), out.c_str());
+  Serial.print("[mqtt] published -> "); Serial.println(device_topic_base);
+}
+
+static void publish_ota_status(const String& job_id, const char* status, const char* message) {
+  String topic = device_topic_base + "/ota/status";
+  StaticJsonDocument<256> doc;
+  doc["job_id"] = job_id;
+  doc["device_id"] = device_id;
+  doc["status"] = status;
+  doc["message"] = message;
+  String out;
+  serializeJson(doc, out);
   mqtt.publish(topic.c_str(), out.c_str());
-  Serial.print("[mqtt] published -> "); Serial.println(topic);
+  Serial.printf("[ota] %s -> %s (%s)\n", job_id.c_str(), status, message);
+}
+
+static void handle_ota_command(const JsonDocument& doc) {
+  const char* job_id_cstr = doc["job_id"] | "";
+  if (!job_id_cstr[0]) {
+    Serial.println("[ota] missing job_id in command");
+    return;
+  }
+  String job_id(job_id_cstr);
+  const char* artifact = doc["artifact_url"] | "";
+  const char* version = doc["version"] | "unknown";
+  Serial.printf("[ota] received job %s -> version %s\n", job_id_cstr, version);
+  if (artifact[0]) {
+    Serial.print("[ota] artifact: ");
+    Serial.println(artifact);
+  }
+
+  publish_ota_status(job_id, "in_progress", "downloading artifact");
+  delay(1000);
+  publish_ota_status(job_id, "completed", "mock install complete");
+}
+
+void mqtt_callback(char* topic, byte* payload, unsigned int length) {
+  String topicStr(topic);
+  if (topicStr != device_topic_base + "/ota") {
+    return;
+  }
+  StaticJsonDocument<512> doc;
+  DeserializationError err = deserializeJson(doc, payload, length);
+  if (err) {
+    Serial.printf("[ota] command parse error: %s\n", err.c_str());
+    return;
+  }
+  handle_ota_command(doc);
 }
 
 void setup() {
@@ -172,6 +226,7 @@ void setup() {
   if (cached_dev.length()) {
     device_id = cached_dev; // preserve stable id between boots if present
   }
+  device_topic_base = String("gaia/devices/") + device_id;
   reg_token = prefs.getString("token", "");
   mqtt_username = prefs.getString("mqtt_user", "");
   mqtt_password = prefs.getString("mqtt_pass", "");
@@ -185,6 +240,8 @@ void setup() {
   }
   // login to obtain access_token (e.g., for future API calls)
   if (!do_login()) return;
+
+  mqtt.setCallback(mqtt_callback);
 }
 
 void loop() {

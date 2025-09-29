@@ -1,9 +1,9 @@
 use anyhow::Result;
 use axum::Router;
+use mock_auth::build_router;
+use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use std::net::SocketAddr;
-use mock_auth::build_router;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -30,16 +30,19 @@ async fn main() -> Result<()> {
     tracing::info!("mock-auth listening on http://{addr}");
 
     let listener = TcpListener::bind(addr).await?;
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
     tracing::info!("mock-auth shutdown complete");
     Ok(())
 }
 
 #[cfg(unix)]
 async fn shutdown_signal() {
-    use tokio::signal::unix::{signal, SignalKind};
+    use tokio::signal::unix::{SignalKind, signal};
     let mut sigint = signal(SignalKind::interrupt()).expect("listen SIGINT");
     let mut sigterm = signal(SignalKind::terminate()).expect("listen SIGTERM");
     tokio::select! {

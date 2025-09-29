@@ -15,7 +15,7 @@ dev-down:
 	@$(COMPOSE) down -v
 
 dev-build:
-	@$(COMPOSE) build mock-auth mock-sink
+	@$(COMPOSE) build mock-auth mock-sink mock-ota
 
 dev-logs:
 	@if [ -n "$(SERVICE)" ]; then \

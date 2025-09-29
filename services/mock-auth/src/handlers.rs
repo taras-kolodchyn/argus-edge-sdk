@@ -1,16 +1,22 @@
-use axum::{Json, http::StatusCode};
+use crate::types::{
+    DeviceLoginReq, DeviceLoginResp, DeviceRegisterReq, DeviceRegisterResp, TokenValidateReq,
+};
 use axum::http::HeaderMap;
+use axum::{Json, http::StatusCode};
 use serde_json::json;
 use time::OffsetDateTime;
 use uuid::Uuid;
-use crate::types::{DeviceRegisterReq, DeviceRegisterResp, DeviceLoginReq, DeviceLoginResp, TokenValidateReq};
 
-pub async fn register(headers: HeaderMap, Json(req): Json<DeviceRegisterReq>) -> Result<Json<DeviceRegisterResp>, (StatusCode, String)> {
+pub async fn register(
+    headers: HeaderMap,
+    Json(req): Json<DeviceRegisterReq>,
+) -> Result<Json<DeviceRegisterResp>, (StatusCode, String)> {
     let request_id = headers
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("-");
-    let accept_any = std::env::var("MOCK_AUTH_ACCEPT_ANY_SECRET").unwrap_or_else(|_| "true".into()) == "true";
+    let accept_any =
+        std::env::var("MOCK_AUTH_ACCEPT_ANY_SECRET").unwrap_or_else(|_| "true".into()) == "true";
     tracing::info!(%request_id, device_id = %req.device_id, "device register request");
     if !accept_any && req.pre_shared_secret.len() < 6 {
         tracing::warn!(%request_id, device_id = %req.device_id, "device register failed: invalid pre_shared_secret");
@@ -33,7 +39,10 @@ pub async fn register(headers: HeaderMap, Json(req): Json<DeviceRegisterReq>) ->
 
 // --- Login ---
 
-pub async fn login(headers: HeaderMap, Json(req): Json<DeviceLoginReq>) -> Result<Json<DeviceLoginResp>, (StatusCode, String)> {
+pub async fn login(
+    headers: HeaderMap,
+    Json(req): Json<DeviceLoginReq>,
+) -> Result<Json<DeviceLoginResp>, (StatusCode, String)> {
     let request_id = headers
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
@@ -47,7 +56,9 @@ pub async fn login(headers: HeaderMap, Json(req): Json<DeviceLoginReq>) -> Resul
     let exp = OffsetDateTime::now_utc() + time::Duration::hours(1);
     let resp = DeviceLoginResp {
         access_token: Uuid::new_v4().to_string(),
-        expires_at: exp.format(&time::format_description::well_known::Rfc3339).unwrap(),
+        expires_at: exp
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap(),
     };
     tracing::info!(%request_id, device_id = %req.device_id, "device login success");
     Ok(Json(resp))
@@ -55,7 +66,10 @@ pub async fn login(headers: HeaderMap, Json(req): Json<DeviceLoginReq>) -> Resul
 
 // --- Validate ---
 
-pub async fn validate(headers: HeaderMap, Json(req): Json<TokenValidateReq>) -> Json<serde_json::Value> {
+pub async fn validate(
+    headers: HeaderMap,
+    Json(req): Json<TokenValidateReq>,
+) -> Json<serde_json::Value> {
     let request_id = headers
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
