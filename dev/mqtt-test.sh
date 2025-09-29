@@ -7,14 +7,14 @@ command -v mosquitto_pub
 command -v mosquitto_sub
 
 HOST="${MQTT_HOST:-mqtt}"
-PORT="${MQTT_PORT:-1883}"
+PORT="${MQTT_PORT:-8883}"
 CA_PATH="${MQTT_CA_PATH:-}"
 TLS_ARGS=""
 if [ -n "$CA_PATH" ] && [ -r "$CA_PATH" ]; then
   TLS_ARGS="--cafile $CA_PATH"
 fi
 
-TOPIC="${MQTT_TELEMETRY_TOPIC:-gaia/devices/selftest}"
+TOPIC="${MQTT_TELEMETRY_TOPIC:-gaia/devices/test}"
 
 echo "[mqtt-test] hostname: $(hostname)"
 echo "[mqtt-test] DNS check..."

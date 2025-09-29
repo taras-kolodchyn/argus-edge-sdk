@@ -102,9 +102,8 @@ jobs:
           set -a
           . ./.env
           set +a
-          # Derive a concrete publish topic from subscription pattern, e.g. gaia/devices/+ -> gaia/devices/test
-          PUB_TOPIC="${PUBLISH_TOPIC:-${MQTT_TOPICS//+/test}}"
-          PUB_TOPIC="${PUB_TOPIC:-gaia/devices/test}"
+          # Prefer explicit topic envs; fall back to replacing '+' in the subscription pattern
+          PUB_TOPIC="${PUBLISH_TOPIC:-${MQTT_TELEMETRY_TOPIC:-${MQTT_TOPICS//+/test}}}"
           # Publish a test message using env-driven broker settings
           CA_OPT=""
           if [ -n "${MQTT_CA_PATH}" ]; then
@@ -122,8 +121,7 @@ jobs:
           set -a
           . ./.env
           set +a
-          PUB_TOPIC="${PUBLISH_TOPIC:-${MQTT_TOPICS//+/test}}"
-          PUB_TOPIC="${PUB_TOPIC:-gaia/devices/test}"
+          PUB_TOPIC="${PUBLISH_TOPIC:-${MQTT_TELEMETRY_TOPIC:-${MQTT_TOPICS//+/test}}}"
           docker compose logs mock-sink | tee /tmp/mock-sink.log
           grep -E "${PUB_TOPIC}|parsed telemetry" /tmp/mock-sink.log
 

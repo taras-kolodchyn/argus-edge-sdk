@@ -56,20 +56,15 @@ curl -fsS http://localhost:8080/healthz
 ```
 
 4) **Publish a test telemetry message**
-> **Note**  
-> If you run this directly in your shell, make sure environment variables are loaded:  
-> ```bash
-> set -a
-> source .env
-> set +a
-> ```
-> This ensures `$MQTT_USERNAME`, `$MQTT_PASSWORD`, and `$MQTT_TOPICS` are available.
 ```bash
-mosquitto_pub -h 127.0.0.1 -p 1883 -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-  -t "argus/devices/device123/telemetry" \
-  -m '{"temp":25,"pm25":10,"noise":42,"ts":123456789}'
+docker compose exec mqtt sh -lc \
+  'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
+    -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
+    -t "${MQTT_TELEMETRY_TOPIC:-gaia/devices/test}" \
+    -m "{\\"temp\\":25,\\"pm25\\":10,\\"noise\\":42,\\"ts\\":123456789}"'
 ```
-> Wildcards (`+`, `#`) are not allowed when publishing. Use a specific device topic (e.g. `argus/devices/device123/telemetry`). Wildcards can only be used when subscribing.
+> Wildcards (`+`, `#`) are not allowed when publishing. Use a specific device topic (e.g. `gaia/devices/test`). Wildcards can only be used when subscribing.
+> Prefer to publish from your host? Copy the generated CA once (`docker compose cp mqtt:/certs/ca.crt ./dev-ca.crt`) and add `--cafile ./dev-ca.crt` when calling `mosquitto_pub` against `127.0.0.1:8883`.
 
 5) **Watch the sink logs**
 ```bash
@@ -148,8 +143,8 @@ docker compose logs -f mock-auth
 
 ### mock-sink
 - MQTT subscriber used for local testing.
-- Subscribes to `MQTT_TOPICS` (default: `argus/devices/+/telemetry`).
-- Connects to broker using `MQTT_URL`/`MQTT_HOST`/`MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`.
+- Subscribes to `MQTT_TOPICS` (default: `gaia/devices/+`).
+- Connects to broker using TLS (`MQTT_CA_PATH`, optional client certs) and `MQTT_URL`/`MQTT_HOST`/`MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`.
 - Logs parsed telemetry.
 
 ## Common workflows
@@ -173,14 +168,18 @@ docker compose logs -f mqtt mock-auth mock-sink
 
 **Publish/subscribe with Mosquitto clients**
 ```bash
-# publish
-mosquitto_pub -h 127.0.0.1 -p 1883 -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-  -t "argus/devices/device123/telemetry" \
-  -m '{"temp":25,"pm25":10,"noise":42,"ts":123456789}'
+# publish (inside container so CA is available)
+docker compose exec mqtt sh -lc \
+  'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
+    -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
+    -t "${MQTT_TELEMETRY_TOPIC:-gaia/devices/test}" \
+    -m "{\\"temp\\":25,\\"pm25\\":10,\\"noise\\":42,\\"ts\\":123456789}"'
 
-# subscribe
-mosquitto_sub -h 127.0.0.1 -p 1883 -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-  -t "argus/devices/#" -v
+# subscribe (wildcard allowed)
+docker compose exec mqtt sh -lc \
+  'mosquitto_sub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
+    -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
+    -t "${MQTT_TOPICS:-gaia/devices/+}" -v'
 ```
 
 ## Configuration (env)
@@ -188,9 +187,12 @@ mosquitto_sub -h 127.0.0.1 -p 1883 -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
 | Variable | Description | Default |
 |---|---|---|
 | `MQTT_USERNAME` / `MQTT_PASSWORD` | Broker credentials | `devuser` / `devpass` |
-| `MQTT_HOST`, `MQTT_PORT` | Broker host/port for in-cluster access | `mqtt`, `1883` |
-| `MQTT_URL` | Full broker URL. If set, overrides host/port. | `mqtt://mqtt:1883` |
-| `MQTT_TOPICS` | Topic filter(s) the sink subscribes to | `argus/devices/+/telemetry` |
+| `MQTT_HOST`, `MQTT_PORT` | Broker host/port for in-cluster access (TLS) | `mqtt`, `8883` |
+| `MQTT_URL` | Full broker URL. If set, overrides host/port. | `mqtt://mqtt:8883` |
+| `MQTT_TOPIC_PREFIX` | Helpers for composing device topics | `gaia/devices/` |
+| `MQTT_TELEMETRY_TOPIC` | Default publish topic for helper scripts | `gaia/devices/test` |
+| `MQTT_TOPICS` | Topic filter(s) the sink subscribes to | `gaia/devices/+` |
+| `MQTT_CA_PATH` | CA certificate path used by mock-sink and scripts | `/certs/ca.crt` |
 | `RUST_LOG` | Log level for Rust services | `info` |
 | `RUST_BACKTRACE` | Rust backtraces on panic | `1` |
 
@@ -205,7 +207,7 @@ mosquitto_sub -h 127.0.0.1 -p 1883 -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
 - **No messages in sink logs**  
   Ensure you publish to the topic in `MQTT_TOPICS` and credentials match those in `.env`.
 - **Host vs. container addresses**  
-  Inside containers use `mqtt:1883`. From your host use `127.0.0.1:1883`.
+  Inside containers use `mqtt:8883` (TLS). From your host use `127.0.0.1:8883` with `--cafile` pointing to the generated CA cert if you call `mosquitto_pub` directly.
 
 ## Contributing
 
