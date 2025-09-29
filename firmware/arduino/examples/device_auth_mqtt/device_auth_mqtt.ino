@@ -156,7 +156,7 @@ static void mqtt_publish_telemetry() {
   String out;
   serializeJson(payload, out);
 
-  String topic = String("argus/devices/") + device_id + "/telemetry";
+  String topic = String("gaia/devices/") + device_id;
   mqtt.publish(topic.c_str(), out.c_str());
   Serial.print("[mqtt] published -> "); Serial.println(topic);
 }

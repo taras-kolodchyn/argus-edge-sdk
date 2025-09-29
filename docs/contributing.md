@@ -11,27 +11,29 @@ Mock services (`mock-auth`, `mock-sink`, `mosquitto`) exist only for **local tes
    ```
 2. Use the local dev stack for testing:
    ```bash
-   cd dev
-   cp -n .env.example .env   # one-time; edit values as needed
-   docker compose up -d mqtt mock-auth mock-sink mqtt-client
+   make dev-up
+   # or: (cd deploy/compose && cp -n .env.example .env && docker compose up -d)
    ```
 3. (Optional) Send a test MQTT message:
    ```bash
-   mosquitto_pub -h 127.0.0.1 -p 1883 -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-     -t "argus/devices/<device-id>/telemetry" \
-     -m '{"temp":25,"pm25":10,"noise":42,"ts":123456789}'
+   (cd deploy/compose && docker compose exec mqtt sh -lc \
+     'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
+       -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
+       -t "${MQTT_TELEMETRY_TOPIC:-gaia/devices/test}" \
+       -m "{\\"temp\\":25,\\"pm25\\":10,\\"noise\\":42,\\"ts\\":123456789}"')
    ```
 4. Run the smoke tests locally with **act** (mirrors CI):
    ```bash
    act -j compose-smoke \
-     --env-file dev/.env \
+     --env-file deploy/compose/.env.example \
      --container-architecture linux/amd64 \
      --bind \
      --container-options '--privileged --user root'
    ```
 
 ## Project layout
-- **/dev** – Docker Compose for local stack, `.env` configuration, helper scripts
+- **/services** – Rust services (`mock-auth`, `mock-sink`)
+- **/deploy/compose** – Docker Compose stack, env templates, helper scripts
 - **/firmware** – device firmware and examples
   - `arduino/examples/` – minimal sketches (hello world, basic sensor usage)
   - `arduino/projects/` – more complete firmware combining multiple sensors

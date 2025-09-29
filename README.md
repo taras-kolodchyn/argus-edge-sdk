@@ -16,36 +16,32 @@ Open-source Edge SDK, firmware, and development kit for building, testing, and i
 
 ## What's inside
 
-- **dev/** – local Docker Compose stack with Mosquitto (MQTT), `mock-auth`, and `mock-sink`
-- **docs/** – guides, topics, OTA examples
-- **firmware/** – example Arduino/ESP32 sketches (stubs/placeholders for now)
+- **services/** – Rust microservices (`mock-auth`, `mock-sink`) managed via a Cargo workspace.
+- **deploy/compose/** – TLS-enabled Docker Compose stack, helper scripts, and environment templates.
+- **firmware/** – example Arduino/ESP32 sketches (stubs/placeholders for now).
+- **docs/** – guides, topics, OTA examples, and architectural references.
+- **Makefile** – common automation (`make dev-up`, `make dev-down`, `make test`, ...).
 
 ## Prerequisites
 
 - Docker &amp; Docker Compose (v2+)
 - (Optional) Mosquitto clients for quick testing: `mosquitto_pub`, `mosquitto_sub`
-- The repo already includes a committed `.env` for local dev; no setup needed.
+- Copy `deploy/compose/.env.example` to `.env` (or run `make dev-up`).
 
 ## Quick start (local stack)
 
 1) **Clone &amp; enter the repo**
 ```bash
 git clone https://github.com/taras-kolodchyn/argus-edge-sdk.git
-cd argus-edge-sdk/dev
+cd argus-edge-sdk
 ```
 
-```
-> **Note on `.env`**
-> A ready-to-use `.env` file is already committed in this repo (for local development).
-> You **do not** need to create `.env` or copy from an example. The committed values are
-> intended for local testing only.
-```
-
-2) **Build and run everything**
+2) **Bootstrap environment &amp; start the stack**
 ```bash
-docker compose up -d --build
-# or force a fresh image rebuild:
-# docker compose build --no-cache &amp;&amp; docker compose up -d
+make dev-up
+# or manually:
+# cp deploy/compose/.env.example deploy/compose/.env
+# (cd deploy/compose && docker compose up -d --build)
 ```
 
 3) **Check health**
@@ -68,10 +64,15 @@ docker compose exec mqtt sh -lc \
 
 5) **Watch the sink logs**
 ```bash
-docker compose logs -f mock-sink
-# you should see something like:
-#  INFO mock_sink: $MQTT_TOPICS &lt;- {"temp":25,"pm25":10,"noise":42,"ts":123456789}
+make dev-logs
+# or: (cd deploy/compose && docker compose logs -f mock-sink)
 ```
+
+## Services
+
+## Architecture
+
+See [docs/architecture.md](docs/architecture.md) for a high-level overview of the repository layout and deployment workflow.
 
 ## Services
 
@@ -137,7 +138,7 @@ curl -i -H 'X-Request-Id: demo-123' http://localhost:8080/healthz | sed -n '1,10
 To tail logs and see request_id correlation:
 
 ```bash
-docker compose logs -f mock-auth
+make dev-logs SERVICE=mock-auth
 # Example log lines include: request_id=... "device register request", "device login success", "token validate"
 ```
 
@@ -151,22 +152,21 @@ docker compose logs -f mock-auth
 
 **Rebuild just one service**
 ```bash
-docker compose build --no-cache mock-auth
-docker compose up -d mock-auth
+make dev-build
 ```
 
 **Restart everything**
 ```bash
-docker compose down -v
-docker compose up -d --build
+make dev-down
+make dev-up
 ```
 
 **Tail logs**
 ```bash
-docker compose logs -f mqtt mock-auth mock-sink
+make dev-logs
 ```
 
-**Publish/subscribe with Mosquitto clients**
+**Publish/subscribe with Mosquitto clients** (run from within `deploy/compose`)
 ```bash
 # publish (inside container so CA is available)
 docker compose exec mqtt sh -lc \
@@ -196,13 +196,15 @@ docker compose exec mqtt sh -lc \
 | `RUST_LOG` | Log level for Rust services | `info` |
 | `RUST_BACKTRACE` | Rust backtraces on panic | `1` |
 
+> Copy `deploy/compose/.env.example` to `.env` for local use. Secrets should be managed via your preferred secret store in shared environments.
+
 ## Troubleshooting
 
 - **Container keeps restarting or exits immediately**  
   Check env is loaded by Compose:
   ```bash
-  docker compose config | awk '/env_file:/{p=1;next}/^[^[:space:]]/{p=0}p'
-  docker compose exec mock-sink env | grep -E 'MQTT_|RUST_'
+  (cd deploy/compose && docker compose config | awk '/env_file:/{p=1;next}/^[^[:space:]]/{p=0}p')
+  (cd deploy/compose && docker compose exec mock-sink env | grep -E 'MQTT_|RUST_')
   ```
 - **No messages in sink logs**  
   Ensure you publish to the topic in `MQTT_TOPICS` and credentials match those in `.env`.
@@ -220,16 +222,19 @@ You can run the CI workflow locally using [`act`](https://github.com/nektos/act)
 To run the main CI job locally with your development environment variables, use:
 
 ```bash
-act -j compose-smoke --env-file dev/.env
+act -j compose-smoke --env-file deploy/compose/.env.example \
+  --container-architecture linux/amd64 \
+  --bind \
+  --container-options '--privileged --user root'
 ```
 
-This command runs the `compose-smoke` job from the workflow, loading environment variables from your `.env` file. Docker **must** be installed and available, as `act` will spin up containers to simulate the GitHub Actions CI environment.
+This command runs the `compose-smoke` job from the workflow, loading environment variables from `deploy/compose/.env`. Docker **must** be installed and available, as `act` will spin up containers to simulate the GitHub Actions CI environment.
 
 **Advanced usage**
 
 ```bash
 act -j compose-smoke \
-  --env-file dev/.env \
+  --env-file deploy/compose/.env.example \
   --container-architecture linux/amd64 \
   --bind \
   --container-options '--privileged --user root'

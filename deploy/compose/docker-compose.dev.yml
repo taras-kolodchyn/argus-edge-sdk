@@ -40,8 +40,8 @@ services:
 
   mock-auth:
     build:
-      context: ./mock-auth
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: services/mock-auth/Dockerfile
     container_name: mock-auth
     depends_on:
       mqtt:
@@ -59,8 +59,8 @@ services:
 
   mock-sink:
     build:
-      context: ./mock-sink
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: services/mock-sink/Dockerfile
     container_name: mock-sink
     restart: unless-stopped
     depends_on:
