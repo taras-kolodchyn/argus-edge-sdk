@@ -30,7 +30,5 @@ The workflow consumes the same `deploy/compose` assets as local developers, ensu
 
 ## Next Steps
 
-- Add a `deploy/k8s` directory with Helm charts to represent staging/production environments.
-- Introduce centralised observability (Prometheus, Grafana) via additional compose profiles.
 - Package firmware builds in CI to provide downloadable device images per release.
 
