@@ -102,12 +102,16 @@ jobs:
           set -a
           . ./.env
           set +a
-          # Derive a concrete publish topic from subscription pattern, e.g. argus/devices/+/telemetry -> argus/devices/test/telemetry
+          # Derive a concrete publish topic from subscription pattern, e.g. gaia/devices/+ -> gaia/devices/test
           PUB_TOPIC="${PUBLISH_TOPIC:-${MQTT_TOPICS//+/test}}"
-          PUB_TOPIC="${PUB_TOPIC:-argus/devices/test/telemetry}"
+          PUB_TOPIC="${PUB_TOPIC:-gaia/devices/test}"
           # Publish a test message using env-driven broker settings
+          CA_OPT=""
+          if [ -n "${MQTT_CA_PATH}" ]; then
+            CA_OPT="--cafile ${MQTT_CA_PATH}"
+          fi
           docker compose exec -T mqtt-client sh -lc \
-            "mosquitto_pub -h \"${MQTT_HOST}\" -p \"${MQTT_PORT}\" -u \"${MQTT_USERNAME}\" -P \"${MQTT_PASSWORD}\" -t \"${PUB_TOPIC}\" -m '{\"temp\":25,\"pm25\":10,\"noise\":42,\"ts\":123456789}'"
+            "mosquitto_pub ${CA_OPT} -h \"${MQTT_HOST}\" -p \"${MQTT_PORT}\" -u \"${MQTT_USERNAME}\" -P \"${MQTT_PASSWORD}\" -t \"${PUB_TOPIC}\" -m '{\"temp\":25,\"pm25\":10,\"noise\":42,\"ts\":123456789}'"
           # Give mock-sink a moment to consume and log
           sleep 2
 
@@ -119,7 +123,7 @@ jobs:
           . ./.env
           set +a
           PUB_TOPIC="${PUBLISH_TOPIC:-${MQTT_TOPICS//+/test}}"
-          PUB_TOPIC="${PUB_TOPIC:-argus/devices/test/telemetry}"
+          PUB_TOPIC="${PUB_TOPIC:-gaia/devices/test}"
           docker compose logs mock-sink | tee /tmp/mock-sink.log
           grep -E "${PUB_TOPIC}|parsed telemetry" /tmp/mock-sink.log
 
