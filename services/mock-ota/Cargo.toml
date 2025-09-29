@@ -2,6 +2,7 @@
 name = "mock-ota"
 version = "0.1.0"
 edition = "2024"
+autotests = false
 
 [dependencies]
 axum = { version = "0.7", features = ["macros", "http1", "json"] }
@@ -18,3 +19,4 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde", "clock"] }
 tokio-util = { version = "0.7", features = ["io"] }
 url = "2"
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }

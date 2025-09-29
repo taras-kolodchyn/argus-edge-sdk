@@ -14,6 +14,7 @@ pub fn build_router() -> Router {
         .route("/auth/device/register", post(handlers::register))
         .route("/auth/device/login", post(handlers::login))
         .route("/auth/token/validate", post(handlers::validate))
+        .route("/auth/service/login", post(handlers::service_login))
         .route(
             "/healthz",
             get(|| async { axum::Json(json!({"status": "ok"})) }),

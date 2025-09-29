@@ -25,10 +25,15 @@ This guide helps you run the local development environment and send a first tele
 4. Publish telemetry to topic `gaia/devices/device-123`.
 5. (Optional) Create an OTA job and dispatch it to the device.
    ```bash
+   SERVICE_TOKEN=$(curl -s -X POST http://localhost:8080/auth/service/login \
+     -H 'Content-Type: application/json' \
+     -d '{"service":"mock-ota","secret":"ota-dev-secret"}' | jq -r '.access_token')
    JOB_ID=$(curl -s -X POST http://localhost:8090/ota/jobs \
      -H 'Content-Type: application/json' \
+     -H "Authorization: Bearer $SERVICE_TOKEN" \
      -d '{\"device_id\":\"device-123\",\"artifact\":\"mock-firmware.bin\",\"version\":\"1.0.1\"}' | jq -r '.id')
-   curl -s -X POST http://localhost:8090/ota/jobs/$JOB_ID/dispatch | jq
+   curl -s -X POST http://localhost:8090/ota/jobs/$JOB_ID/dispatch \
+     -H "Authorization: Bearer $SERVICE_TOKEN" | jq
    # (optional) simulate device ack
    (cd deploy/compose && docker compose -f docker-compose.dev.yml exec mqtt sh -lc \
      'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \

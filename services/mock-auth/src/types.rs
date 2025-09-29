@@ -31,3 +31,22 @@ pub struct DeviceLoginResp {
     pub access_token: String,
     pub expires_at: String,
 }
+
+#[derive(Deserialize)]
+pub struct ServiceLoginReq {
+    pub service: String,
+    pub secret: String,
+}
+
+#[derive(Serialize)]
+pub struct ServiceLoginResp {
+    pub access_token: String,
+    pub expires_at: String,
+}
+
+#[derive(Serialize)]
+pub struct TokenValidateResp {
+    pub valid: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+}

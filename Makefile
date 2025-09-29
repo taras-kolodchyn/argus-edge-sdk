@@ -10,6 +10,7 @@ bootstrap:
 
 dev-up: bootstrap
 	@$(COMPOSE) up -d
+	@echo "OTP tester loop active (inspect via 'make dev-logs SERVICE=otp-tester')."
 
 dev-down:
 	@$(COMPOSE) down -v

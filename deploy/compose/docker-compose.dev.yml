@@ -115,6 +115,18 @@ services:
     volumes:
       - certs:/certs:ro
 
+  otp-tester:
+    image: curlimages/curl:8.4.0
+    container_name: otp-tester
+    restart: unless-stopped
+    depends_on:
+      mock-auth:
+        condition: service_healthy
+    env_file: .env
+    volumes:
+      - ./otp-test.sh:/otp-test.sh:ro
+    entrypoint: ["/bin/sh", "-lc", "/otp-test.sh"]
+
   mqtt-test:
     image: eclipse-mosquitto:2
     container_name: mqtt-test

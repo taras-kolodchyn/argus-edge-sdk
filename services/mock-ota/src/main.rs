@@ -11,11 +11,12 @@ use axum::{
     Json, Router,
     body::Body,
     extract::{Path as AxumPath, State},
-    http::{StatusCode, header},
+    http::{HeaderMap, StatusCode, header},
     response::Response,
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
+use reqwest::Client;
 use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, QoS, TlsConfiguration, Transport};
 use serde::{Deserialize, Serialize};
 use tokio::{fs, sync::RwLock};
@@ -82,6 +83,14 @@ struct AppState {
     public_base: String,
     topic_prefix: String,
     mqtt: AsyncClient,
+    auth: AuthContext,
+}
+
+#[derive(Clone)]
+struct AuthContext {
+    client: Client,
+    validate_url: String,
+    required_service: String,
 }
 
 impl AppState {
@@ -137,10 +146,84 @@ fn ensure_safe_artifact_name(name: &str) -> Result<(), (StatusCode, String)> {
     Ok(())
 }
 
+#[derive(Serialize, Deserialize)]
+struct TokenValidateRequest<'a> {
+    access_token: &'a str,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct TokenValidateResponse {
+    valid: bool,
+    service: Option<String>,
+}
+
+async fn ensure_authorized(
+    auth: &AuthContext,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, String)> {
+    let auth_header = headers.get(header::AUTHORIZATION).ok_or((
+        StatusCode::UNAUTHORIZED,
+        "missing authorization header".into(),
+    ))?;
+    let auth_str = auth_header.to_str().map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            "invalid authorization header".into(),
+        )
+    })?;
+    let token = auth_str
+        .strip_prefix("Bearer ")
+        .or_else(|| auth_str.strip_prefix("bearer "))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or((StatusCode::UNAUTHORIZED, "invalid bearer token".into()))?;
+
+    let response = auth
+        .client
+        .post(&auth.validate_url)
+        .json(&TokenValidateRequest {
+            access_token: token,
+        })
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "auth validate request failed");
+            (StatusCode::BAD_GATEWAY, "auth service unavailable".into())
+        })?;
+
+    if !response.status().is_success() {
+        tracing::warn!(status = %response.status(), "auth validate returned non-success");
+        return Err((StatusCode::UNAUTHORIZED, "token validation failed".into()));
+    }
+
+    let body = response
+        .json::<TokenValidateResponse>()
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to decode auth validate response");
+            (StatusCode::BAD_GATEWAY, "invalid auth response".into())
+        })?;
+
+    if !body.valid {
+        return Err((StatusCode::UNAUTHORIZED, "invalid token".into()));
+    }
+
+    if body.service.as_deref() != Some(auth.required_service.as_str()) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "token not permitted for this service".into(),
+        ));
+    }
+
+    Ok(())
+}
+
 async fn create_job(
     State(state): State<SharedState>,
+    headers: HeaderMap,
     Json(payload): Json<CreateJobRequest>,
 ) -> Result<Json<OtaJob>, (StatusCode, String)> {
+    ensure_authorized(&state.auth, &headers).await?;
     ensure_safe_artifact_name(&payload.artifact)?;
     let artifact_path = state.artifact_dir.join(&payload.artifact);
     fs::metadata(&artifact_path)
@@ -168,15 +251,21 @@ async fn create_job(
     Ok(Json(job))
 }
 
-async fn list_jobs(State(state): State<SharedState>) -> Json<Vec<OtaJob>> {
+async fn list_jobs(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<OtaJob>>, (StatusCode, String)> {
+    ensure_authorized(&state.auth, &headers).await?;
     let jobs = state.jobs.read().await;
-    Json(jobs.values().cloned().collect())
+    Ok(Json(jobs.values().cloned().collect()))
 }
 
 async fn get_job(
     State(state): State<SharedState>,
+    headers: HeaderMap,
     AxumPath(id): AxumPath<Uuid>,
 ) -> Result<Json<OtaJob>, (StatusCode, String)> {
+    ensure_authorized(&state.auth, &headers).await?;
     let jobs = state.jobs.read().await;
     jobs.get(&id)
         .cloned()
@@ -186,8 +275,10 @@ async fn get_job(
 
 async fn dispatch_job(
     State(state): State<SharedState>,
+    headers: HeaderMap,
     AxumPath(id): AxumPath<Uuid>,
 ) -> Result<Json<OtaJob>, (StatusCode, String)> {
+    ensure_authorized(&state.auth, &headers).await?;
     let (device_id, artifact, version, current_status) = {
         let jobs = state.jobs.read().await;
         let job = jobs
@@ -234,7 +325,11 @@ async fn dispatch_job(
 
     tracing::info!(job_id = %id, topic, "OTA command dispatched");
 
-    get_job(State(state), AxumPath(id)).await
+    let jobs = state.jobs.read().await;
+    jobs.get(&id)
+        .cloned()
+        .map(Json)
+        .ok_or((StatusCode::NOT_FOUND, "job not found".into()))
 }
 
 async fn list_artifacts(
@@ -347,6 +442,29 @@ async fn handle_status_message(state: &AppState, topic: &str, payload: &[u8]) {
     }
 }
 
+fn build_router(state: SharedState) -> Router {
+    Router::new()
+        .route("/healthz", get(healthz))
+        .route("/ota/jobs", post(create_job).get(list_jobs))
+        .route("/ota/jobs/:id", get(get_job))
+        .route("/ota/jobs/:id/dispatch", post(dispatch_job))
+        .route("/ota/artifacts", get(list_artifacts))
+        .route("/ota/artifacts/:name", get(get_artifact))
+        .with_state(state)
+        .layer(
+            TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {
+                let request_id = req
+                    .headers()
+                    .get("x-request-id")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("-");
+                tracing::info_span!("http", %request_id, method = %req.method(), uri = %req.uri())
+            }),
+        )
+        .layer(PropagateRequestIdLayer::x_request_id())
+        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
@@ -362,6 +480,11 @@ async fn main() -> anyhow::Result<()> {
     let public_base = read_env("MOCK_OTA_PUBLIC_BASE", "http://mock-ota:8090");
     let topic_prefix = ensure_trailing_slash(read_env("MQTT_TOPIC_PREFIX", "gaia/devices/"));
     let artifact_dir = PathBuf::from(read_env("MOCK_OTA_ARTIFACT_DIR", "/artifacts"));
+    let validate_url = read_env(
+        "MOCK_AUTH_VALIDATE_URL",
+        "http://mock-auth:8080/auth/token/validate",
+    );
+    let required_service = read_env("MOCK_OTA_REQUIRED_SERVICE", "mock-ota");
 
     let mqtt_username = read_env("MQTT_USERNAME", "devuser");
     let mqtt_password = read_env("MQTT_PASSWORD", "devpass");
@@ -427,6 +550,7 @@ async fn main() -> anyhow::Result<()> {
     opts.set_transport(transport);
 
     let (client, mut eventloop) = AsyncClient::new(opts, 32);
+    let http_client = Client::builder().build()?;
 
     client
         .subscribe(topic_prefix.clone() + "+/ota/status", QoS::AtLeastOnce)
@@ -439,6 +563,11 @@ async fn main() -> anyhow::Result<()> {
         public_base,
         topic_prefix,
         mqtt: client.clone(),
+        auth: AuthContext {
+            client: http_client,
+            validate_url,
+            required_service,
+        },
     });
 
     let mqtt_state = Arc::clone(&state);
@@ -463,27 +592,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let app_state = Arc::clone(&state);
-    let app = Router::new()
-        .route("/healthz", get(healthz))
-        .route("/ota/jobs", post(create_job).get(list_jobs))
-        .route("/ota/jobs/:id", get(get_job))
-        .route("/ota/jobs/:id/dispatch", post(dispatch_job))
-        .route("/ota/artifacts", get(list_artifacts))
-        .route("/ota/artifacts/:name", get(get_artifact))
-        .with_state(app_state)
-        .layer(
-            TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {
-                let request_id = req
-                    .headers()
-                    .get("x-request-id")
-                    .and_then(|v| v.to_str().ok())
-                    .unwrap_or("-");
-                tracing::info_span!("http", %request_id, method = %req.method(), uri = %req.uri())
-            }),
-        )
-        .layer(PropagateRequestIdLayer::x_request_id())
-        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid));
+    let app = build_router(Arc::clone(&state));
 
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
     tracing::info!("mock-ota listening on http://{addr}");
@@ -522,3 +631,7 @@ async fn shutdown_signal() {
         .expect("failed to install Ctrl+C handler");
     tracing::info!("shutdown signal received");
 }
+
+#[cfg(test)]
+#[path = "../tests/mod.rs"]
+mod tests;

@@ -30,9 +30,17 @@ jobs:
         working-directory: services/mock-sink
         run: cargo build --locked --release
 
+      - name: Test mock-sink
+        working-directory: services/mock-sink
+        run: cargo test --locked --all-features -- --nocapture
+
       - name: Build mock-ota
         working-directory: services/mock-ota
         run: cargo build --locked --release
+
+      - name: Test mock-ota
+        working-directory: services/mock-ota
+        run: cargo test --locked --all-features -- --nocapture
 
   compose-smoke:
     name: Docker Compose smoke test
@@ -130,6 +138,20 @@ jobs:
           # Give mock-sink a moment to consume and log
           sleep 2
 
+      - name: Obtain OTA service token
+        working-directory: deploy/compose
+        env:
+          COMPOSE_FILE: docker-compose.dev.yml
+        run: |
+          set -euxo pipefail
+          set -a
+          . ./.env
+          set +a
+          SERVICE_TOKEN=$(curl -s -X POST http://localhost:8080/auth/service/login \
+            -H 'Content-Type: application/json' \
+            -d '{"service":"'"${MOCK_OTA_SERVICE_NAME:-mock-ota}"'","secret":"'"${MOCK_OTA_SERVICE_SECRET:-ota-dev-secret}"'"}' | jq -r '.access_token')
+          echo "SERVICE_TOKEN=$SERVICE_TOKEN" >> $GITHUB_ENV
+
       - name: Create OTA job
         working-directory: deploy/compose
         env:
@@ -141,10 +163,13 @@ jobs:
           set +a
           JOB_ID=$(curl -s -X POST http://localhost:8090/ota/jobs \
             -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $SERVICE_TOKEN" \
             -d '{"device_id":"test-device","artifact":"mock-firmware.bin","version":"1.0.1"}' | jq -r '.id')
           echo "JOB_ID=$JOB_ID" >> $GITHUB_ENV
-          curl -s -X POST http://localhost:8090/ota/jobs/$JOB_ID/dispatch | jq
-          curl -s http://localhost:8090/ota/jobs/$JOB_ID | jq
+          curl -s -X POST http://localhost:8090/ota/jobs/$JOB_ID/dispatch \
+            -H "Authorization: Bearer $SERVICE_TOKEN" | jq
+          curl -s http://localhost:8090/ota/jobs/$JOB_ID \
+            -H "Authorization: Bearer $SERVICE_TOKEN" | jq
 
       - name: Simulate device OTA acknowledgement
         working-directory: deploy/compose
@@ -161,7 +186,8 @@ jobs:
               -u ${MQTT_USERNAME?missing} -P ${MQTT_PASSWORD?missing} \
               -t ${MQTT_TOPIC_PREFIX:-gaia/devices/}test-device/ota/status \
               -m '{\\\"job_id\\\":\\\"'"$JOB_ID"'\\\",\\\"status\\\":\\\"completed\\\",\\\"message\\\":\\\"ci acknowledgment\\\"}'"
-          curl -s http://localhost:8090/ota/jobs/$JOB_ID | jq
+          curl -s http://localhost:8090/ota/jobs/$JOB_ID \
+            -H "Authorization: Bearer $SERVICE_TOKEN" | jq
 
       - name: Assert mock-sink consumed message
         working-directory: deploy/compose

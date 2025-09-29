@@ -209,17 +209,23 @@ docker compose exec mqtt sh -lc \
 **Manage OTA jobs**
 ```bash
 curl -s http://localhost:8090/ota/jobs | jq
+SERVICE_TOKEN=$(curl -s -X POST http://localhost:8080/auth/service/login \
+  -H 'Content-Type: application/json' \
+  -d '{"service":"mock-ota","secret":"ota-dev-secret"}' | jq -r '.access_token')
 JOB_ID=$(curl -s -X POST http://localhost:8090/ota/jobs \
   -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $SERVICE_TOKEN" \
   -d '{\"device_id\":\"device-123\",\"artifact\":\"mock-firmware.bin\",\"version\":\"1.0.1\"}' | jq -r '.id')
-curl -s -X POST http://localhost:8090/ota/jobs/$JOB_ID/dispatch | jq
+curl -s -X POST http://localhost:8090/ota/jobs/$JOB_ID/dispatch \
+  -H "Authorization: Bearer $SERVICE_TOKEN" | jq
 # simulate device ack (optional)
 (cd deploy/compose && docker compose -f docker-compose.dev.yml exec mqtt sh -lc \
   'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
     -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
     -t "${MQTT_TOPIC_PREFIX:-gaia/devices/}device-123/ota/status" \
     -m "{\\\"job_id\\\":\\\"'$JOB_ID'\\\",\\\"status\\\":\\\"completed\\\",\\\"message\\\":\\\"manual ack\\\"}"')
-curl -s http://localhost:8090/ota/jobs/$JOB_ID | jq
+curl -s http://localhost:8090/ota/jobs/$JOB_ID \
+  -H "Authorization: Bearer $SERVICE_TOKEN" | jq
 ```
 
 ## Configuration (env)

@@ -1,9 +1,9 @@
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use mock_auth::build_router;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tower::util::ServiceExt; // for `oneshot`
 
 #[tokio::test]
@@ -156,4 +156,63 @@ async fn login_then_validate() {
     let val_json: Value =
         serde_json::from_slice(&to_bytes(val_resp.into_body(), 64 * 1024).await.unwrap()).unwrap();
     assert_eq!(val_json["valid"], true);
+    assert!(val_json["service"].is_null());
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn service_login_and_validate() {
+    unsafe {
+        std::env::set_var("MOCK_OTA_SERVICE_SECRET", "super-secret");
+        std::env::set_var("MOCK_OTA_SERVICE_NAME", "mock-ota");
+    }
+    let app = build_router();
+
+    let login_body = json!({
+        "service": "mock-ota",
+        "secret": "super-secret",
+    })
+    .to_string();
+    let login_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/service/login")
+                .header("content-type", "application/json")
+                .body(Body::from(login_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(login_resp.status(), StatusCode::OK);
+    let login_json: Value =
+        serde_json::from_slice(&to_bytes(login_resp.into_body(), 64 * 1024).await.unwrap())
+            .unwrap();
+    let token = login_json["access_token"].as_str().unwrap();
+
+    let validate_body = json!({
+        "access_token": token,
+    })
+    .to_string();
+    let validate_resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/token/validate")
+                .header("content-type", "application/json")
+                .body(Body::from(validate_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(validate_resp.status(), StatusCode::OK);
+    let resp_json: Value = serde_json::from_slice(
+        &to_bytes(validate_resp.into_body(), 64 * 1024)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(resp_json["valid"], true);
+    assert_eq!(resp_json["service"], Value::String("mock-ota".into()));
 }

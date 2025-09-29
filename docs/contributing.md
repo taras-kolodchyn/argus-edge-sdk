@@ -24,10 +24,15 @@ Mock services (`mock-auth`, `mock-sink`, `mock-ota`, Mosquitto) exist only for *
    ```
 3b. (Optional) Create and dispatch a mock OTA job:
    ```bash
+   SERVICE_TOKEN=$(curl -s -X POST http://localhost:8080/auth/service/login \
+     -H 'Content-Type: application/json' \
+     -d '{"service":"mock-ota","secret":"ota-dev-secret"}' | jq -r '.access_token')
    (cd deploy/compose && JOB_ID=$(curl -s -X POST http://localhost:8090/ota/jobs \
      -H 'Content-Type: application/json' \
+     -H "Authorization: Bearer $SERVICE_TOKEN" \
      -d '{"device_id":"device-123","artifact":"mock-firmware.bin","version":"1.0.1"}' | jq -r '.id') && \
-     curl -s -X POST http://localhost:8090/ota/jobs/$JOB_ID/dispatch | jq)
+     curl -s -X POST http://localhost:8090/ota/jobs/$JOB_ID/dispatch \
+       -H "Authorization: Bearer $SERVICE_TOKEN" | jq)
    # optional: acknowledge via mqtt-client
    (cd deploy/compose && docker compose -f docker-compose.dev.yml exec mqtt sh -lc \
      'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
