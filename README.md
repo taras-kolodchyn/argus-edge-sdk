@@ -1,5 +1,5 @@
 ![Argus Edge SDK](/docs/argus_edge_sdk.jpg)
-Open-source Edge SDK, firmware, and development kit for building, testing, and integrating IoT and sensor devices with the Gaia Project’s Argus service. Includes example firmware for Arduino/ESP32, a local MQTT/TLS development environment, OTA update examples, and backend mock services to enable community contributions and custom integrations.
+Open-source Edge SDK, firmware, and development kit for building, testing, and integrating IoT and sensor devices with the Argus platform. Includes example firmware for Arduino-class boards (UNO, Portenta H7, ESP32 DevKit), a local MQTT/TLS development environment, OTA update examples, and backend mock services to enable community contributions and custom integrations.
 
 [![CI][ci-badge]][ci-url]
 [![Release][rel-badge]][rel-url]
