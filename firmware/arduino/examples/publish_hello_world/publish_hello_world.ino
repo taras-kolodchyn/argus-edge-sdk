@@ -4,8 +4,8 @@
 const char* ssid = "YOUR_WIFI";
 const char* pass = "YOUR_PASS";
 
-const char* mqtt_host = "192.168.0.10"; // or your machine IP
-const int   mqtt_port = 1883;
+const char* mqtt_host = "192.168.0.10";  // or your machine IP
+const int mqtt_port = 1883;
 const char* mqtt_user = "devuser";
 const char* mqtt_pass = "devpass";
 
@@ -15,7 +15,10 @@ PubSubClient client(espClient);
 void setup() {
   Serial.begin(115200);
   WiFi.begin(ssid, pass);
-  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
 
   client.setServer(mqtt_host, mqtt_port);
   while (!client.connected()) {
@@ -31,7 +34,7 @@ void loop() {
   client.loop();
 
   String topic = "argus/devices/device-123";
-  String payload = "{"temp":24.3,"pm25":12,"ts":" + String((unsigned long)millis()) + "}";
+  String payload = "{" temp ":24.3," pm25 ":12," ts ":" + String((unsigned long)millis()) + "}";
   client.publish(topic.c_str(), payload.c_str());
   delay(5000);
 }

@@ -278,6 +278,17 @@ act -j compose-smoke --env-file deploy/compose/.env.example \
   --container-architecture linux/amd64 \
   --bind \
   --container-options '--privileged --user root'
+
+# run Arduino firmware lint/compile locally
+act -W .github/workflows/arduino.yml -j lint \
+  --container-architecture linux/amd64 \
+  --secret GITHUB_TOKEN=${GITHUB_TOKEN:-ghp_dummy}
+act -W .github/workflows/arduino.yml -j compile --matrix board=arduino-uno \
+  --container-architecture linux/amd64 \
+  --secret GITHUB_TOKEN=${GITHUB_TOKEN:-ghp_dummy}
+act -W .github/workflows/arduino.yml -j compile --matrix board=esp32-devkit \
+  --container-architecture linux/amd64 \
+  --secret GITHUB_TOKEN=${GITHUB_TOKEN:-ghp_dummy}
 ```
 
 This command runs the `compose-smoke` job from the workflow, loading environment variables from `deploy/compose/.env`. Docker **must** be installed and available, as `act` will spin up containers to simulate the GitHub Actions CI environment.

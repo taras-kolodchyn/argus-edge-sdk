@@ -1,0 +1,129 @@
+name: arduino-firmware
+
+on:
+  push:
+    paths:
+      - 'firmware/arduino/**'
+      - '.github/workflows/arduino.yml'
+  pull_request:
+    paths:
+      - 'firmware/arduino/**'
+      - '.github/workflows/arduino.yml'
+
+env:
+  ARDUINO_ADDITIONAL_URLS: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+  SKETCH_ROOT: firmware/arduino
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Arduino CLI
+        uses: arduino/setup-arduino-cli@v1
+        with:
+          token: ${{ env.GITHUB_TOKEN || secrets.GITHUB_TOKEN || github.token || 'local-run' }}
+
+      - name: Install arduino-lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL https://downloads.arduino.cc/arduino-lint/arduino-lint_latest_Linux_64bit.tar.gz -o /tmp/arduino-lint.tar.gz
+          tar -xf /tmp/arduino-lint.tar.gz -C /tmp
+          bin_path=$(find /tmp -maxdepth 2 -type f -name 'arduino-lint' | head -n1)
+          if [ -z "$bin_path" ]; then
+            echo "::error::Unable to locate arduino-lint binary"
+            exit 1
+          fi
+          install "$bin_path" "$HOME/.local/bin/arduino-lint"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Cache Arduino cores
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.arduino15/packages
+            ~/.arduino15/staging
+          key: ${{ runner.os }}-arduino-cores
+
+      - name: Prepare Arduino CLI
+        run: |
+          arduino-cli config init --overwrite --additional-urls "$ARDUINO_ADDITIONAL_URLS"
+          arduino-cli core update-index
+
+      - name: Lint sketches
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v arduino-lint >/dev/null 2>&1; then
+            echo "::error::arduino-lint not found"
+            exit 1
+          fi
+          mapfile -t sketches < <(find "$SKETCH_ROOT" -name '*.ino' -print)
+          if [ ${#sketches[@]} -eq 0 ]; then
+            echo "::warning::No sketches found under $SKETCH_ROOT"
+            exit 0
+          fi
+          for sketch in "${sketches[@]}"; do
+            sketch_dir="$(dirname "$sketch")"
+            echo "::group::Linting $sketch"
+            (cd "$sketch_dir" && arduino-lint --recursive --project-type sketch --compliance specification)
+            echo "::endgroup::"
+          done
+
+  compile:
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        board:
+          - name: arduino-uno
+            fqbn: arduino:avr:uno
+            core: arduino:avr
+          - name: esp32-devkit
+            fqbn: esp32:esp32:esp32doit-devkit-v1
+            core: esp32:esp32
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Arduino CLI
+        uses: arduino/setup-arduino-cli@v1
+        with:
+          token: ${{ env.GITHUB_TOKEN || secrets.GITHUB_TOKEN || github.token || 'local-run' }}
+
+      - name: Cache Arduino cores
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.arduino15/packages
+            ~/.arduino15/staging
+          key: ${{ runner.os }}-arduino-${{ matrix.board.core }}
+          restore-keys: |
+            ${{ runner.os }}-arduino-
+
+      - name: Install board platform
+        run: |
+          arduino-cli config init --overwrite --additional-urls "$ARDUINO_ADDITIONAL_URLS"
+          arduino-cli core update-index
+          arduino-cli core install "${{ matrix.board.core }}"
+
+      - name: Compile sketches for ${{ matrix.board.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t sketches < <(find "$SKETCH_ROOT" -name '*.ino' -print)
+          if [ ${#sketches[@]} -eq 0 ]; then
+            echo "::warning::No sketches found under $SKETCH_ROOT"
+            exit 0
+          fi
+          for sketch in "${sketches[@]}"; do
+            sketch_dir="$(dirname "$sketch")"
+            echo "::group::Compiling ${sketch} -> ${{ matrix.board.fqbn }}"
+            arduino-cli compile --fqbn "${{ matrix.board.fqbn }}" "$sketch_dir"
+            echo "::endgroup::"
+          done
