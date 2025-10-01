@@ -190,6 +190,26 @@ make dev-logs
 # e.g. make dev-logs SERVICE=mock-ota
 ```
 
+## Testing
+
+```bash
+# Run all Rust tests across services
+make test
+
+# Run only one package (e.g., mock-auth integration tests)
+cargo test -p mock-auth -- --nocapture
+
+# Arduino firmware lint
+act -W .github/workflows/arduino.yml -j lint \
+  --container-architecture linux/amd64 \
+  --secret GITHUB_TOKEN=<token>
+
+# Arduino firmware build (all boards via matrix)
+act -W .github/workflows/arduino.yml -j compile \
+  --container-architecture linux/amd64 \
+  --secret GITHUB_TOKEN=<token>
+```
+
 **Publish/subscribe with Mosquitto clients** (run from within `deploy/compose`)
 ```bash
 # publish (inside container so CA is available)
