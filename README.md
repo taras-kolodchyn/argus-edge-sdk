@@ -57,10 +57,10 @@ curl -fsS http://localhost:8080/healthz
 docker compose exec mqtt sh -lc \
   'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
     -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-    -t "${MQTT_TELEMETRY_TOPIC:-gaia/devices/test}" \
+    -t "${MQTT_TELEMETRY_TOPIC:-argus/devices/test}" \
     -m "{\\"temp\\":25,\\"pm25\\":10,\\"noise\\":42,\\"ts\\":123456789}"'
 ```
-> Wildcards (`+`, `#`) are not allowed when publishing. Use a specific device topic (e.g. `gaia/devices/test`). Wildcards can only be used when subscribing.
+> Wildcards (`+`, `#`) are not allowed when publishing. Use a specific device topic (e.g. `argus/devices/test`). Wildcards can only be used when subscribing.
 > Prefer to publish from your host? Copy the generated CA once (`docker compose cp mqtt:/certs/ca.crt ./dev-ca.crt`) and add `--cafile ./dev-ca.crt` when calling `mosquitto_pub` against `127.0.0.1:8883`.
 
 5) **Watch the sink logs**
@@ -154,13 +154,13 @@ make dev-logs SERVICE=mock-auth
 
 ### mock-sink
 - MQTT subscriber used for local testing.
-- Subscribes to `MQTT_TOPICS` (default: `gaia/devices/#`).
+- Subscribes to `MQTT_TOPICS` (default: `argus/devices/#`).
 - Connects to broker using TLS (`MQTT_CA_PATH`, optional client certs) and `MQTT_URL`/`MQTT_HOST`/`MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD`.
 - Logs parsed telemetry.
 
 ### mock-ota
 - OTA control plane for dev. Exposes HTTP API on port **8090** (`/ota/jobs`, `/ota/artifacts`).
-- Publishes commands to `gaia/devices/{device_id}/ota` and listens for acknowledgements on `gaia/devices/{device_id}/ota/status`.
+- Publishes commands to `argus/devices/{device_id}/ota` and listens for acknowledgements on `argus/devices/{device_id}/ota/status`.
 - Serves files from `firmware/artifacts/` so devices can download mock firmware binaries.
 - Sample flow:
   ```bash
@@ -196,14 +196,14 @@ make dev-logs
 docker compose exec mqtt sh -lc \
   'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
     -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-    -t "${MQTT_TELEMETRY_TOPIC:-gaia/devices/test}" \
+    -t "${MQTT_TELEMETRY_TOPIC:-argus/devices/test}" \
     -m "{\\"temp\\":25,\\"pm25\\":10,\\"noise\\":42,\\"ts\\":123456789}"'
 
 # subscribe (wildcard allowed)
 docker compose exec mqtt sh -lc \
   'mosquitto_sub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
     -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-    -t "${MQTT_TOPICS:-gaia/devices/#}" -v'
+    -t "${MQTT_TOPICS:-argus/devices/#}" -v'
 ```
 
 **Manage OTA jobs**
@@ -222,7 +222,7 @@ curl -s -X POST http://localhost:8090/ota/jobs/$JOB_ID/dispatch \
 (cd deploy/compose && docker compose -f docker-compose.dev.yml exec mqtt sh -lc \
   'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
     -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-    -t "${MQTT_TOPIC_PREFIX:-gaia/devices/}device-123/ota/status" \
+    -t "${MQTT_TOPIC_PREFIX:-argus/devices/}device-123/ota/status" \
     -m "{\\\"job_id\\\":\\\"'$JOB_ID'\\\",\\\"status\\\":\\\"completed\\\",\\\"message\\\":\\\"manual ack\\\"}"')
 curl -s http://localhost:8090/ota/jobs/$JOB_ID \
   -H "Authorization: Bearer $SERVICE_TOKEN" | jq
@@ -235,9 +235,9 @@ curl -s http://localhost:8090/ota/jobs/$JOB_ID \
 | `MQTT_USERNAME` / `MQTT_PASSWORD` | Broker credentials | `devuser` / `devpass` |
 | `MQTT_HOST`, `MQTT_PORT` | Broker host/port for in-cluster access (TLS) | `mqtt`, `8883` |
 | `MQTT_URL` | Full broker URL. If set, overrides host/port. | `mqtt://mqtt:8883` |
-| `MQTT_TOPIC_PREFIX` | Helpers for composing device topics | `gaia/devices/` |
-| `MQTT_TELEMETRY_TOPIC` | Default publish topic for helper scripts | `gaia/devices/test` |
-| `MQTT_TOPICS` | Topic filter(s) the sink subscribes to | `gaia/devices/#` |
+| `MQTT_TOPIC_PREFIX` | Helpers for composing device topics | `argus/devices/` |
+| `MQTT_TELEMETRY_TOPIC` | Default publish topic for helper scripts | `argus/devices/test` |
+| `MQTT_TOPICS` | Topic filter(s) the sink subscribes to | `argus/devices/#` |
 | `MQTT_CA_PATH` | CA certificate path used by mock-sink and scripts | `/certs/ca.crt` |
 | `MOCK_OTA_HOST` | OTA service bind host | `0.0.0.0` |
 | `MOCK_OTA_PORT` | OTA service bind port | `8090` |
@@ -259,7 +259,7 @@ curl -s http://localhost:8090/ota/jobs/$JOB_ID \
 - **No messages in sink logs**  
   Ensure you publish to the topic in `MQTT_TOPICS` and credentials match those in `deploy/compose/.env`.
 - **OTA job stuck in “dispatched”**  
-  Check `make dev-logs SERVICE=mock-ota` (command side) and confirm the device firmware subscribed to `gaia/devices/<device_id>/ota`.
+  Check `make dev-logs SERVICE=mock-ota` (command side) and confirm the device firmware subscribed to `argus/devices/<device_id>/ota`.
 - **Host vs. container addresses**  
   Inside containers use `mqtt:8883` (TLS). From your host use `127.0.0.1:8883` with `--cafile` pointing to the generated CA cert if you call `mosquitto_pub` directly.
 

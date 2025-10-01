@@ -478,7 +478,7 @@ async fn main() -> anyhow::Result<()> {
     let host = read_env("MOCK_OTA_HOST", "0.0.0.0");
     let port: u16 = read_env("MOCK_OTA_PORT", "8090").parse().unwrap_or(8090);
     let public_base = read_env("MOCK_OTA_PUBLIC_BASE", "http://mock-ota:8090");
-    let topic_prefix = ensure_trailing_slash(read_env("MQTT_TOPIC_PREFIX", "gaia/devices/"));
+    let topic_prefix = ensure_trailing_slash(read_env("MQTT_TOPIC_PREFIX", "argus/devices/"));
     let artifact_dir = PathBuf::from(read_env("MOCK_OTA_ARTIFACT_DIR", "/artifacts"));
     let validate_url = read_env(
         "MOCK_AUTH_VALIDATE_URL",

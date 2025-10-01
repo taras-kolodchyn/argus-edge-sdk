@@ -14,7 +14,7 @@ if [ -n "$CA_PATH" ] && [ -r "$CA_PATH" ]; then
   TLS_ARGS="--cafile $CA_PATH"
 fi
 
-TOPIC="${MQTT_TELEMETRY_TOPIC:-gaia/devices/test}"
+TOPIC="${MQTT_TELEMETRY_TOPIC:-argus/devices/test}"
 
 echo "[mqtt-test] hostname: $(hostname)"
 echo "[mqtt-test] DNS check..."

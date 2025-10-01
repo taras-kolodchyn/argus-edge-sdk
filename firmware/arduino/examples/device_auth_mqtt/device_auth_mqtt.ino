@@ -226,7 +226,7 @@ void setup() {
   if (cached_dev.length()) {
     device_id = cached_dev; // preserve stable id between boots if present
   }
-  device_topic_base = String("gaia/devices/") + device_id;
+  device_topic_base = String("argus/devices/") + device_id;
   reg_token = prefs.getString("token", "");
   mqtt_username = prefs.getString("mqtt_user", "");
   mqtt_password = prefs.getString("mqtt_pass", "");

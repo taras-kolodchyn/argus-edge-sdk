@@ -22,7 +22,7 @@ This guide helps you run the local development environment and send a first tele
    ```bash
    curl -s http://localhost:8080/auth/device/register          -H 'Content-Type: application/json'          -d '{"device_id":"device-123","pre_shared_secret":"abc123"}' | jq
    ```
-4. Publish telemetry to topic `gaia/devices/device-123`.
+4. Publish telemetry to topic `argus/devices/device-123`.
 5. (Optional) Create an OTA job and dispatch it to the device.
    ```bash
    SERVICE_TOKEN=$(curl -s -X POST http://localhost:8080/auth/service/login \
@@ -38,7 +38,7 @@ This guide helps you run the local development environment and send a first tele
    (cd deploy/compose && docker compose -f docker-compose.dev.yml exec mqtt sh -lc \
      'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
        -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-       -t "${MQTT_TOPIC_PREFIX:-gaia/devices/}device-123/ota/status" \
+      -t "${MQTT_TOPIC_PREFIX:-argus/devices/}device-123/ota/status" \
        -m "{\\\"job_id\\\":\\\"'$JOB_ID'\\\",\\\"status\\\":\\\"completed\\\",\\\"message\\\":\\\"manual ack\\\"}"')
    ```
    Watch `mock-ota` logs (`make dev-logs SERVICE=mock-ota`) and the device serial monitor to see the simulated firmware update.

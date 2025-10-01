@@ -19,7 +19,7 @@ Mock services (`mock-auth`, `mock-sink`, `mock-ota`, Mosquitto) exist only for *
    (cd deploy/compose && docker compose exec mqtt sh -lc \
      'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
        -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-   -t "${MQTT_TELEMETRY_TOPIC:-gaia/devices/test}" \
+   -t "${MQTT_TELEMETRY_TOPIC:-argus/devices/test}" \
       -m "{\\"temp\\":25,\\"pm25\\":10,\\"noise\\":42,\\"ts\\":123456789}"')
    ```
 3b. (Optional) Create and dispatch a mock OTA job:
@@ -37,7 +37,7 @@ Mock services (`mock-auth`, `mock-sink`, `mock-ota`, Mosquitto) exist only for *
    (cd deploy/compose && docker compose -f docker-compose.dev.yml exec mqtt sh -lc \
      'mosquitto_pub --cafile /certs/ca.crt -h "$MQTT_HOST" -p "$MQTT_PORT" \
        -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
-       -t "${MQTT_TOPIC_PREFIX:-gaia/devices/}device-123/ota/status" \
+      -t "${MQTT_TOPIC_PREFIX:-argus/devices/}device-123/ota/status" \
        -m "{\\"job_id\\":\\"'$JOB_ID'\\",\\"status\\":\\"completed\\",\\"message\\":\\"manual ack\\"}"')
    ```
 4. Run the smoke tests locally with **act** (mirrors CI):

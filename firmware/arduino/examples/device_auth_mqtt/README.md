@@ -21,8 +21,8 @@ Expected flow
 2) POST /auth/device/register → token, mqtt_username, mqtt_password
 3) POST /auth/device/login → access_token
 4) Connect MQTT using credentials from register
-5) Publishes telemetry every 5s to `gaia/devices/<device_id>`
-6) Listens on `gaia/devices/<device_id>/ota` and sends status updates to `gaia/devices/<device_id>/ota/status` when an OTA job is dispatched
+5) Publishes telemetry every 5s to `argus/devices/<device_id>`
+6) Listens on `argus/devices/<device_id>/ota` and sends status updates to `argus/devices/<device_id>/ota/status` when an OTA job is dispatched
 
 Troubleshooting
 - If HTTP register/login fails, check `AUTH_HOST` resolves from the device network

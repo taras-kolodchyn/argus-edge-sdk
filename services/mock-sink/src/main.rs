@@ -56,7 +56,7 @@ async fn main() -> Result<()> {
     // Prefer MQTT_TELEMETRY_TOPIC for a concrete publish path in CI; fallback to subscription pattern
     let topics_csv = match std::env::var("MQTT_TELEMETRY_TOPIC") {
         Ok(v) if !v.trim().is_empty() => v.trim().to_string(),
-        _ => read_env("MQTT_TOPICS", "gaia/devices/+"),
+        _ => read_env("MQTT_TOPICS", "argus/devices/+"),
     };
     let default_host = read_env("MQTT_HOST", "mqtt");
     let default_port: u16 = read_env("MQTT_PORT", "8883").parse().unwrap_or(8883);
@@ -155,7 +155,7 @@ async fn main() -> Result<()> {
     }
 
     // HTTP server with Axum
-    let topic_prefix = ensure_trailing_slash(read_env("MQTT_TOPIC_PREFIX", "gaia/devices/"));
+    let topic_prefix = ensure_trailing_slash(read_env("MQTT_TOPIC_PREFIX", "argus/devices/"));
     tracing::info!("mqtt topic prefix -> {topic_prefix}");
     let state = Arc::new(AppState {
         mqtt: client.clone(),
