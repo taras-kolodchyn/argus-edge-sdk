@@ -1,9 +1,0 @@
-[workspace]
-members = [
-    "services/mock-auth", "services/mock-ota",
-    "services/mock-sink"
-]
-resolver = "2"
-
-[workspace.metadata]
-description = "Gaia Argus Edge SDK services"

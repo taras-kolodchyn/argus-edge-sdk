@@ -1,6 +1,7 @@
 COMPOSE_DIR := deploy/compose
 COMPOSE_FILE := docker-compose.dev.yml
 COMPOSE := cd $(COMPOSE_DIR) && docker compose -f $(COMPOSE_FILE)
+CARGO_WORKSPACE := services/Cargo.toml
 
 .PHONY: bootstrap dev-up dev-down dev-logs dev-build fmt lint test check workspace-clean
 
@@ -26,16 +27,16 @@ dev-logs:
 	fi
 
 fmt:
-	cargo fmt --all
+	cargo fmt --all --manifest-path $(CARGO_WORKSPACE)
 
 lint:
-	cargo clippy --workspace --all-targets --all-features -- -D warnings
+	cargo clippy --manifest-path $(CARGO_WORKSPACE) --workspace --all-targets --all-features -- -D warnings
 
 check:
-	cargo check --workspace --all-targets --all-features
+	cargo check --manifest-path $(CARGO_WORKSPACE) --workspace --all-targets --all-features
 
 test:
-	cargo test --workspace --all-features -- --nocapture
+	cargo test --manifest-path $(CARGO_WORKSPACE) --workspace --all-features -- --nocapture
 
 workspace-clean:
-	cargo clean
+	cargo clean --manifest-path $(CARGO_WORKSPACE)

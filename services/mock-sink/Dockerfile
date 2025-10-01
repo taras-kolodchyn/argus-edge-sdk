@@ -5,16 +5,14 @@ WORKDIR /app
 
 # ---- planner ----
 FROM chef AS planner
-COPY Cargo.toml Cargo.lock ./
-COPY services services
+COPY services/ ./
 RUN cargo chef prepare --recipe-path recipe.json
 
 # ---- builder ----
 FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
-COPY Cargo.toml Cargo.lock ./
-COPY services services
+COPY services/ ./
 RUN cargo build --release --bin mock-sink
 
 # ---- runtime ----

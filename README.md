@@ -197,7 +197,7 @@ make dev-logs
 make test
 
 # Run only one package (e.g., mock-auth integration tests)
-cargo test -p mock-auth -- --nocapture
+cargo test -p mock-auth --manifest-path services/Cargo.toml -- --nocapture
 
 # Arduino firmware lint
 act -W .github/workflows/arduino.yml -j lint \
