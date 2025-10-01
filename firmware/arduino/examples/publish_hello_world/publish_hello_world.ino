@@ -34,7 +34,7 @@ void loop() {
   client.loop();
 
   String topic = "argus/devices/device-123";
-  String payload = "{" temp ":24.3," pm25 ":12," ts ":" + String((unsigned long)millis()) + "}";
+  String payload = "{\"temp\":24.3,\"pm25\":12,\"ts\":" + String((unsigned long)millis()) + "}";
   client.publish(topic.c_str(), payload.c_str());
   delay(5000);
 }

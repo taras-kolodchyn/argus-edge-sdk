@@ -283,12 +283,22 @@ act -j compose-smoke --env-file deploy/compose/.env.example \
 act -W .github/workflows/arduino.yml -j lint \
   --container-architecture linux/amd64 \
   --secret GITHUB_TOKEN=${GITHUB_TOKEN:-ghp_dummy}
-act -W .github/workflows/arduino.yml -j compile --matrix board=arduino-uno \
+act -W .github/workflows/arduino.yml -j compile \
+  --matrix '{"board":"arduino-uno"}' \
   --container-architecture linux/amd64 \
   --secret GITHUB_TOKEN=${GITHUB_TOKEN:-ghp_dummy}
-act -W .github/workflows/arduino.yml -j compile --matrix board=esp32-devkit \
+act -W .github/workflows/arduino.yml -j compile \
+  --matrix '{"board":"esp32-devkit"}' \
   --container-architecture linux/amd64 \
   --secret GITHUB_TOKEN=${GITHUB_TOKEN:-ghp_dummy}
+act -W .github/workflows/arduino.yml -j compile \
+  --matrix '{"board":"portenta-h7"}' \
+  --container-architecture linux/amd64 \
+  --secret GITHUB_TOKEN=${GITHUB_TOKEN:-ghp_dummy}
+
+> **Note:** The first `compile` run pulls large toolchains (esp32 ≈600 MB,
+> Portenta ≈400 MB). Expect the initial build to take several minutes while
+> caches warm up; subsequent runs are much faster.
 ```
 
 This command runs the `compose-smoke` job from the workflow, loading environment variables from `deploy/compose/.env`. Docker **must** be installed and available, as `act` will spin up containers to simulate the GitHub Actions CI environment.

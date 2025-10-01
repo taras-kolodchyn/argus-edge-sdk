@@ -32,8 +32,10 @@ jobs:
           set -euo pipefail
           mkdir -p "$HOME/.local/bin"
           curl -fsSL https://downloads.arduino.cc/arduino-lint/arduino-lint_latest_Linux_64bit.tar.gz -o /tmp/arduino-lint.tar.gz
-          tar -xf /tmp/arduino-lint.tar.gz -C /tmp
-          bin_path=$(find /tmp -maxdepth 2 -type f -name 'arduino-lint' | head -n1)
+          workdir=$(mktemp -d)
+          trap 'rm -rf "$workdir"' EXIT
+          tar -xf /tmp/arduino-lint.tar.gz -C "$workdir"
+          bin_path=$(find "$workdir" -maxdepth 2 -type f -name 'arduino-lint' | head -n1)
           if [ -z "$bin_path" ]; then
             echo "::error::Unable to locate arduino-lint binary"
             exit 1
@@ -80,13 +82,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        board:
-          - name: arduino-uno
+        board: [arduino-uno, esp32-devkit, portenta-h7]
+        include:
+          - board: arduino-uno
             fqbn: arduino:avr:uno
             core: arduino:avr
-          - name: esp32-devkit
+          - board: esp32-devkit
             fqbn: esp32:esp32:esp32doit-devkit-v1
             core: esp32:esp32
+          - board: portenta-h7
+            fqbn: arduino:mbed_portenta:envie_m7
+            core: arduino:mbed_portenta
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -102,7 +108,7 @@ jobs:
           path: |
             ~/.arduino15/packages
             ~/.arduino15/staging
-          key: ${{ runner.os }}-arduino-${{ matrix.board.core }}
+          key: ${{ runner.os }}-arduino-${{ matrix.core }}
           restore-keys: |
             ${{ runner.os }}-arduino-
 
@@ -110,9 +116,33 @@ jobs:
         run: |
           arduino-cli config init --overwrite --additional-urls "$ARDUINO_ADDITIONAL_URLS"
           arduino-cli core update-index
-          arduino-cli core install "${{ matrix.board.core }}"
+          retry() {
+            local attempts=0
+            local max_attempts=3
+            local delay=5
+            while true; do
+              if "$@"; then
+                return 0
+              fi
+              attempts=$((attempts + 1))
+              if [ $attempts -ge $max_attempts ]; then
+                echo "::error ::Command failed after ${max_attempts} attempts: $*"
+                return 1
+              fi
+              echo "::warning ::Command failed (attempt ${attempts}/${max_attempts}): $*"
+              sleep $((delay * attempts))
+            done
+          }
+          echo "::notice ::Installing core ${{ matrix.core }} — this may download large packages (first run can take several minutes)"
+          retry arduino-cli core install "${{ matrix.core }}"
 
-      - name: Compile sketches for ${{ matrix.board.name }}
+      - name: Install Arduino libraries
+        run: |
+          echo "::notice ::Updating library index and installing shared libraries (PubSubClient, ArduinoJson, WiFi)"
+          arduino-cli lib update-index
+          arduino-cli lib install PubSubClient ArduinoJson WiFi || true
+
+      - name: Compile sketches for ${{ matrix.board }}
         shell: bash
         run: |
           set -euo pipefail
@@ -123,7 +153,22 @@ jobs:
           fi
           for sketch in "${sketches[@]}"; do
             sketch_dir="$(dirname "$sketch")"
-            echo "::group::Compiling ${sketch} -> ${{ matrix.board.fqbn }}"
-            arduino-cli compile --fqbn "${{ matrix.board.fqbn }}" "$sketch_dir"
+            sketch_name="${sketch_dir##*/}"
+            case "${{ matrix.board }}" in
+              esp32-devkit)
+                # full suite on ESP32
+                ;;
+              *)
+                if [[ "$sketch_name" == "device_auth_mqtt" ]]; then
+                  echo "::notice ::Skipping $sketch for board ${{ matrix.board }} (ESP32-only sketch)"
+                  continue
+                fi
+                ;;
+            esac
+            echo "::group::Compiling ${sketch} -> ${{ matrix.fqbn }}"
+            if ! arduino-cli compile --fqbn "${{ matrix.fqbn }}" "$sketch_dir"; then
+              echo "::error ::Compilation failed for ${sketch} on board ${{ matrix.board }}"
+              exit 1
+            fi
             echo "::endgroup::"
           done
